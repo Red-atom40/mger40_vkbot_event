@@ -68,6 +68,7 @@ class VKBot:
             Запускает бесконечный цикл LongPoll и передаёт события в _handle_message
         """
 
+        # TODO: добавить логирование запуска и ошибок
         print("Бот запущен. Нажмите Ctrl+C для остановки.")
 
         for event in self._longpoll.listen():
