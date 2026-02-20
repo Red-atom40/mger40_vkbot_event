@@ -1,48 +1,14 @@
-import random
-from typing import NamedTuple
+import sqlite3
 
-import vk_api
-from vk_api.longpoll import VkLongPoll, VkEventType
+from domain.quiz import Quiz
+from domain.step import STEPS, START_COMMANDS
 
+from bot.client import VkClient
 from config import Config
-from database import Database
-from session import Session
-from validation import validate
+from database.database import Database
+from domain.session import Session
+from validation.validation import validate
 
-
-class Step(NamedTuple):
-    """
-        Один шаг опроса: ключ поля (key) и текст вопроса (question)
-    """
-
-    key: str
-    question: str
-
-
-STEPS: list[Step] = [
-    Step("fio",                    "Введите ваше ФИО полностью (Фамилия Имя Отчество):"),
-    Step("birth_date",             "Дата рождения (ДД.ММ.ГГГГ):"),
-    Step("region",                 "Регион постоянной регистрации:"),
-    Step("city",                   "Город / населённый пункт:"),
-    Step("street",                 "Улица:"),
-    Step("house",                  "Дом / корпус / квартира:"),
-    Step("passport_number",
-         "Серия и номер паспорта (без пробелов, например 4519123456):"),
-    Step("passport_issued_by",     "Кем выдан паспорт:"),
-    Step("passport_issue_date",    "Дата выдачи паспорта (ДД.ММ.ГГГГ):"),
-    Step("phone",                  "Контактный телефон (+7...):"),
-    Step("contact_info",           "Email / Telegram:"),
-    Step("education_level",
-         "Образование:\n  школьное / среднее специальное / высшее / иное"),
-    Step("is_member",
-         "Являетесь ли вы членом партии «Единая Россия»? (да / нет):"),
-    Step("previous_organizations",
-         "В каких молодёжных / политических организациях состояли ранее?\n(если нигде — напишите «нет»)"),
-    Step("study_or_work_place",    "Место учёбы / работы (название и город):"),
-]
-
-# Команды, которые запускают опрос
-START_COMMANDS = {"вступить", "заявка", "/start", "start"}
 
 
 class VKBot:
@@ -51,29 +17,31 @@ class VKBot:
         и сохраняет заявки через Database
     """
 
-    def __init__(self, config: Config, db: Database) -> None:
+    def __init__(self, config: Config, db: Database, client: VkClient) -> None:
         """
-            Инициализирует VK API, LongPoll и подключает базу данных
+            Принимает конфиг, репозиторий заявок и VK-клиент
         """
 
         self.config = config
         self.db = db
+        self._client = client
         self._sessions: dict[str, Session] = {}
-        self._vk_session = vk_api.VkApi(token=config.vk_token)
-        self._vk = self._vk_session.get_api()
-        self._longpoll = VkLongPoll(self._vk_session)
 
     def run(self) -> None:
         """
             Запускает бесконечный цикл LongPoll и передаёт события в _handle_message
         """
 
-        # TODO: добавить логирование запуска и ошибок
-        print("Бот запущен. Нажмите Ctrl+C для остановки.")
+        print("VK Bot is running... Press Ctrl+C to stop.")
 
-        for event in self._longpoll.listen():
-            if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                self._handle_message(event)
+        try:
+            for event in self._client.listen():
+                try:
+                    self._handle_message(event)
+                except Exception as e:
+                    print(f"Error handling message: {e}")   
+        except KeyboardInterrupt:
+            print("VK Bot stopped by user.")
 
     def _handle_message(self, event) -> None:
         """
@@ -82,6 +50,8 @@ class VKBot:
 
         vk_id = str(event.user_id)
         text = event.text.strip()
+
+        print(f"Received message from vk_id={vk_id}: {text!r}")
 
         # Пользователь хочет начать опрос
         if text.lower() in START_COMMANDS:
@@ -92,7 +62,7 @@ class VKBot:
 
         if session is None:
             # Нет активной сессии — подсказываем как начать
-            self._send(
+            self._client.send(
                 event.user_id,
                 'Здравствуйте! Отправьте «вступить», чтобы подать заявку в «Молодую Гвардию».',
             )
@@ -107,15 +77,17 @@ class VKBot:
 
         # Проверяем, есть ли уже заявка от этого пользователя
         if self.db.has_application(vk_id):
-            self._send(
+            print(f"Duplicate application attempt vk_id={vk_id}")
+            self._client.send(
                 user_id, "Ваша заявка уже принята. Спасибо за интерес к «Молодой Гвардии»!")
             return
 
+        print(f"Quiz started vk_id={vk_id}")
         session = Session(vk_id, self.config.session_timeout)
         self._sessions[vk_id] = session
 
         # Отправляем приветственное сообщение и первый вопрос
-        self._send(
+        self._client.send(
             user_id,
             (
                 "Добро пожаловать! Вы начинаете заполнение заявки на вступление в «Молодую Гвардию».\n"
@@ -138,10 +110,12 @@ class VKBot:
         ok, error_msg = validate(current_step.key, text)
 
         if not ok:
-            self._send(user_id, f"{error_msg}\n\n{current_step.question}")
+            self._client.send(
+                user_id, f"{error_msg}\n\n{current_step.question}")
             return
 
         # Сохраняем ответ и переходим к следующему шагу
+        print(f"Answer saved vk_id={vk_id} step={session.step_index} key={current_step.key}")
         session.answers[current_step.key] = text
         session.step_index += 1
         session.touch()
@@ -149,7 +123,7 @@ class VKBot:
         if session.step_index >= len(STEPS):
             self._finalize_quiz(vk_id, user_id, session)
         else:
-            self._send(user_id, STEPS[session.step_index].question)
+            self._client.send(user_id, STEPS[session.step_index].question)
 
     def _finalize_quiz(self, vk_id: str, user_id: int, session: Session) -> None:
         """
@@ -157,10 +131,21 @@ class VKBot:
         """
 
         # Сохраняем заявку в базе данных
-        self.db.save_application(session.answers, vk_id)
+        print(f"Saving application vk_id={vk_id}")
+        try:
+            self.db.save_application(Quiz.from_answers(session.answers, vk_id))
+        except sqlite3.Error as e:
+            print(f"DB error vk_id={vk_id}: {e}")
+            self._client.send(
+                user_id,
+                "Не удалось сохранить заявку из-за внутренней ошибки. Попробуйте ещё раз позже.",
+            )
+            return
+
+        print(f"Application accepted vk_id={vk_id}")
         del self._sessions[vk_id]
 
-        self._send(
+        self._client.send(
             user_id,
             (
                 "Ваша заявка успешно принята!\n"
@@ -184,14 +169,3 @@ class VKBot:
             return None
 
         return session
-
-    def _send(self, user_id: int, message: str) -> None:
-        """
-            Отправляет текстовое сообщение пользователю через VK API
-        """
-
-        self._vk.messages.send(
-            user_id=user_id,
-            message=message,
-            random_id=random.getrandbits(31),
-        )

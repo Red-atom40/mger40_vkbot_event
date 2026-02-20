@@ -1,22 +1,15 @@
 from config import Config
-from database import Database
-from encryption import Encryptor
-from bot import VKBot
+from database.database import Database
+from tools.encryption import Encryptor
+from bot.bot import VKBot
+from bot.client import VkClient
 
 
-# TODO: сделать логирование
-# TODO: обработка ошибок при работе с VK API и базой данных
-# TODO: добавить какую-то админку
-# TODO: рассылки о предстоящих мероприятиях (с подтверждением участия)
-# TODO: интегрировать ссылки на группы и чаты
+# TODO: добавить логирование
+# TODO: добавить какую-то админку + система выдачи админ прав
+# TODO: рассылки о предстоящих мероприятиях (с подтверждением участия), интегрировать ссылки на группы и чаты в рассылки
 # TODO: переделать VK_TOKEN на VK Implicit Flow
 
-
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-#     datefmt="%Y-%m-%d %H:%M:%S",
-# )
 
 
 def main() -> None:
@@ -30,7 +23,8 @@ def main() -> None:
 
     encryptor = Encryptor(config.key_path)
     db = Database(config.db_path, encryptor)
-    bot = VKBot(config, db)
+    client = VkClient(config.vk_token)
+    bot = VKBot(config, db, client)
     bot.run()
 
 

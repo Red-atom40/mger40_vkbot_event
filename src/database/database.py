@@ -1,7 +1,7 @@
 import sqlite3
-from datetime import datetime
 
-from encryption import Encryptor
+from domain.quiz import Quiz
+from tools.encryption import Encryptor
 
 
 CREATE_TABLE_SQL = """
@@ -70,41 +70,43 @@ class Database:
             ).fetchone()
         return row is not None
 
-    def save_application(self, answers: dict, vk_id: str) -> None:
+    def save_application(self, quiz: Quiz) -> None:
         """
         Сохраняет заявку в БД; номер паспорта шифруется перед записью\n
         При повторном вызове с тем же vk_id запись перезаписывается (INSERT OR REPLACE)
         """
 
-        encrypted_passport = self.encryptor.encrypt(answers["passport_number"])
+        encrypted_passport = self.encryptor.encrypt(quiz.passport_number)
 
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO applications VALUES (
-                    :vk_id, :fio, :birth_date, :region, :city, :street, :house,
-                    :passport_number, :passport_issued_by, :passport_issue_date,
-                    :phone, :contact_info, :education_level, :is_member,
-                    :previous_organizations, :study_or_work_place, :created_at
+                INSERT OR REPLACE INTO applications (
+                    vk_id, fio, birth_date, region, city, street, house,
+                    passport_number, passport_issued_by, passport_issue_date,
+                    phone, contact_info, education_level, is_member,
+                    previous_organizations, study_or_work_place, created_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
-                {
-                    "vk_id": vk_id,
-                    "fio": answers["fio"],
-                    "birth_date": answers["birth_date"],
-                    "region": answers["region"],
-                    "city": answers["city"],
-                    "street": answers["street"],
-                    "house": answers["house"],
-                    "passport_number": encrypted_passport,
-                    "passport_issued_by": answers["passport_issued_by"],
-                    "passport_issue_date": answers["passport_issue_date"],
-                    "phone": answers["phone"],
-                    "contact_info": answers["contact_info"],
-                    "education_level": answers["education_level"],
-                    "is_member": answers["is_member"],
-                    "previous_organizations": answers["previous_organizations"],
-                    "study_or_work_place": answers["study_or_work_place"],
-                    "created_at": datetime.now().timestamp(),
-                },
+                (
+                    quiz.vk_id,
+                    quiz.fio,
+                    quiz.birth_date,
+                    quiz.region,
+                    quiz.city,
+                    quiz.street,
+                    quiz.house,
+                    encrypted_passport,
+                    quiz.passport_issued_by,
+                    quiz.passport_issue_date,
+                    quiz.phone,
+                    quiz.contact_info,
+                    quiz.education_level,
+                    quiz.is_member,
+                    quiz.previous_organizations,
+                    quiz.study_or_work_place,
+                    quiz.created_at,
+                ),
             )
