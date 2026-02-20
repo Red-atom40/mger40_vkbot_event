@@ -11,3 +11,4 @@ wheels/
 .env
 secret.key
 quiz.db
+/seed
