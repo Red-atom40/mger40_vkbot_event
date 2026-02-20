@@ -1,0 +1,4 @@
+vk-api>=11.9.9
+cryptography>=43.0.0
+uvicorn>=0.41.0
+python-dotenv>=1.2.1

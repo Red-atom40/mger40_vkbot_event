@@ -1,0 +1,12 @@
+[project]
+name = "vk-bot-mg"
+version = "0.1.0"
+description = "VK-бот для сбора заявок в «Молодую Гвардию»"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "vk-api>=11.9.9",
+    "cryptography>=43.0.0",
+    "uvicorn>=0.41.0",
+    "python-dotenv>=1.2.1",
+]
