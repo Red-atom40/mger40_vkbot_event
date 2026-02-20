@@ -4,18 +4,14 @@ from cryptography.fernet import Fernet
 
 class Encryptor:
     """
-        Этот класс отвечает за шифрование и расшифровку строк с помощью симметричного алгоритма cryptography.fernet
-        Ключ хранится в файле key_path. При первом запуске ключ генерируется автоматически
-
-        Если не указать .key становится невозможно расшифровать данные
+        Шифрует и расшифровывает строки алгоритмом Fernet\n
+        Ключ хранится в файле key_path; при первом запуске генерируется автоматически\n
+        Без key_path файла расшифровать данные невозможно
     """
 
     def __init__(self, key_path: str) -> None:
         """
-            Инициализирует Encryptor, загружая или создавая ключ
-
-            :param key_path: Путь к файлу с ключом для шифрования
-            :return: Ничего не возвращает
+            Загружает или создаёт ключ по пути key_path и инициализирует Fernet
         """
 
         self._fernet = Fernet(self._load_or_create_key(key_path))
@@ -23,10 +19,7 @@ class Encryptor:
     @staticmethod
     def _load_or_create_key(key_path: str) -> bytes:
         """
-            Загружает ключ из файла или создаёт новый, если файл не существует
-
-            :param key_path: Путь к файлу с ключом
-            :return: Ключ в виде байтов
+            Загружает ключ из файла или генерирует новый, если файл не существует
         """
 
         # Если файл с ключом уже существует, читаем его
@@ -41,10 +34,7 @@ class Encryptor:
 
     def encrypt(self, plaintext: str) -> str:
         """
-            Шифрует строку
-
-            :param plaintext: Строка для шифрования
-            :return: Зашифрованная строка
+            Шифрует строку и возвращает результат в виде base64-строки
         """
 
         return self._fernet.encrypt(plaintext.encode()).decode()

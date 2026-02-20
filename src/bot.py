@@ -7,19 +7,18 @@ from vk_api.longpoll import VkLongPoll, VkEventType
 from config import Config
 from database import Database
 from session import Session
+from validation import validate
 
 
 class Step(NamedTuple):
     """
-        Класс для описания одного шага опроса
-        Содержит ключ поля и текст вопроса
+        Один шаг опроса: ключ поля (key) и текст вопроса (question)
     """
 
     key: str
     question: str
 
 
-# Список шагов опроса. Порядок важен, так как step_index в Session указывает на текущий вопрос.
 STEPS: list[Step] = [
     Step("fio",                    "Введите ваше ФИО полностью (Фамилия Имя Отчество):"),
     Step("birth_date",             "Дата рождения (ДД.ММ.ГГГГ):"),
@@ -48,23 +47,13 @@ START_COMMANDS = {"вступить", "заявка", "/start", "start"}
 
 class VKBot:
     """
-        Класс для работы с VK API и управления логикой опроса
-
-        - config: Конфигурация приложения
-        - db: Экземпляр класса Database для сохранения заявок
-        - _sessions: Словарь активных сессий пользователей
-        - _vk_session: Сессия VK API
-        - _vk: Объект для работы с методами VK API
-        - _longpoll: Объект для прослушивания событий VK
+        Основной класс бота: слушает LongPoll, ведёт опрос по шагам STEPS
+        и сохраняет заявки через Database
     """
 
     def __init__(self, config: Config, db: Database) -> None:
         """
-            Инициализирует бота с заданной конфигурацией и базой данных
-
-            :param config: Экземпляр класса Config с настройками приложения
-            :param db: Экземпляр класса Database для сохранения заявок
-            :return: Ничего не возвращает
+            Инициализирует VK API, LongPoll и подключает базу данных
         """
 
         self.config = config
@@ -76,9 +65,7 @@ class VKBot:
 
     def run(self) -> None:
         """
-            Запускает бота, прослушивая события VK и обрабатывая входящие сообщения
-
-            :return: Ничего не возвращает
+            Запускает бесконечный цикл LongPoll и передаёт события в _handle_message
         """
 
         print("Бот запущен. Нажмите Ctrl+C для остановки.")
@@ -89,10 +76,7 @@ class VKBot:
 
     def _handle_message(self, event) -> None:
         """
-            Обрабатывает входящее сообщение от пользователя
-
-            :param event: Событие нового сообщения от VK
-            :return: Ничего не возвращает
+            Роутер входящих сообщений: старт опроса или следующий шаг
         """
 
         vk_id = str(event.user_id)
@@ -117,12 +101,7 @@ class VKBot:
 
     def _start_quiz(self, vk_id: str, user_id: int) -> None:
         """
-            Инициализирует новую сессию для пользователя 
-            и отправляет первый вопрос
-
-            :param vk_id: Идентификатор пользователя (строка)
-            :param user_id: Идентификатор пользователя (целое число)
-            :return: Ничего не возвращает
+            Создаёт сессию и отправляет первый вопрос; отказывает, если заявка уже есть
         """
 
         # Проверяем, есть ли уже заявка от этого пользователя
@@ -149,25 +128,23 @@ class VKBot:
         self, vk_id: str, user_id: int, session: Session, text: str
     ) -> None:
         """
-            Обрабатывает ответ пользователя, сохраняет его в сессии 
-            и отправляет следующий вопрос или завершает опрос
-
-            :param vk_id: Идентификатор пользователя (строка)
-            :param user_id: Идентификатор пользователя (целое число)
-            :param session: Текущая сессия пользователя
-            :param text: Текст ответа пользователя
-            :return: Ничего не возвращает
+            Валидирует ответ, сохраняет его в сессии и отправляет следующий вопрос\n
+            При ошибке валидации повторяет текущий вопрос с пояснением
         """
 
-        # Сохраняем ответ на текущий вопрос
+        # Валидируем ответ на текущий вопрос
         current_step = STEPS[session.step_index]
+        ok, error_msg = validate(current_step.key, text)
 
+        if not ok:
+            self._send(user_id, f"{error_msg}\n\n{current_step.question}")
+            return
+
+        # Сохраняем ответ и переходим к следующему шагу
         session.answers[current_step.key] = text
-
         session.step_index += 1
         session.touch()
 
-        # Если это был последний вопрос, сохраняем заявку и завершаем опрос
         if session.step_index >= len(STEPS):
             self._finalize_quiz(vk_id, user_id, session)
         else:
@@ -175,19 +152,13 @@ class VKBot:
 
     def _finalize_quiz(self, vk_id: str, user_id: int, session: Session) -> None:
         """
-            Сохраняет заявку в базе данных и отправляет пользователю сообщение о завершении
-
-            :param vk_id: Идентификатор пользователя
-            :param user_id: Идентификатор пользователя
-            :param session: Сессия пользователя с накопленными ответами
-            :return: Ничего не возвращает
+            Сохраняет готовую заявку в БД, удаляет сессию и благодарит пользователя
         """
 
         # Сохраняем заявку в базе данных
         self.db.save_application(session.answers, vk_id)
         del self._sessions[vk_id]
 
-        # Отправляем сообщение о том, что заявка принята
         self._send(
             user_id,
             (
@@ -198,11 +169,7 @@ class VKBot:
 
     def _get_active_session(self, vk_id: str) -> Session | None:
         """
-            Возвращает сессию, если она существует и не истекла
-            Просроченную сессию удаляет и уведомляет пользователя
-
-            :param vk_id: Идентификатор пользователя (строка)
-            :return: Активная сессия или None, если её нет или она истекла
+            Возвращает активную сессию или None; просроченную сессию удаляет
         """
 
         # Проверяем, есть ли сессия для данного vk_id
@@ -213,18 +180,13 @@ class VKBot:
         # Проверяем, не истек ли таймаут сессии
         if session.is_expired():
             del self._sessions[vk_id]
-            # Уведомление будет отправлено при следующем сообщении от пользователя
             return None
 
         return session
 
     def _send(self, user_id: int, message: str) -> None:
         """
-            Отправляет сообщение пользователю через VK API
-
-            :param user_id: Идентификатор пользователя VK (целое число)
-            :param message: Текст сообщения для отправки
-            :return: Ничего не возвращает
+            Отправляет текстовое сообщение пользователю через VK API
         """
 
         self._vk.messages.send(

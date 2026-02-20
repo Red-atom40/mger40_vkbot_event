@@ -3,6 +3,7 @@ from database import Database
 from encryption import Encryptor
 from bot import VKBot
 
+
 # TODO: сделать логирование
 # TODO: вадидация сообщений от пользователя
 # TODO: обработка ошибок при работе с VK API и базой данных

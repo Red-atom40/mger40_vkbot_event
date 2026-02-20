@@ -29,20 +29,13 @@ CREATE TABLE IF NOT EXISTS applications (
 
 class Database:
     """
-        Класс для работы с базой данных SQLite, 
-        который сохраняет заявки пользователей
-
-        - db_path
-        - encryptor
+        Репозиторий заявок: создаёт таблицу, сохраняет и проверяет записи\n
+        Паспортные данные шифруются через Encryptor перед записью
     """
 
     def __init__(self, db_path: str, encryptor: Encryptor) -> None:
         """
-            Инициализирует базу данных, создаёт таблицу, если её нет
-
-            :param db_path: Путь к файлу базы данных SQLite
-            :param encryptor: Экземпляр класса Encryptor для шифрования данных
-            :return: Ничего не возвращает
+            Открывает (или создаёт) базу данных и инициализирует таблицу
         """
 
         self.db_path = db_path
@@ -51,9 +44,7 @@ class Database:
 
     def _connect(self) -> sqlite3.Connection:
         """
-            Устанавливает соединение с базой данных
-
-            :return: sqlite3.Connection — объект соединения с базой данных
+            Открывает соединение с SQLite
         """
 
         conn = sqlite3.connect(self.db_path)
@@ -62,19 +53,15 @@ class Database:
 
     def _init_db(self) -> None:
         """
-            Инициализирует базу данных, создавая таблицу applications, если её ещё нет
-
-            :return: Ничего не возвращает
+            Создаёт таблицу applications, если она ещё не существует
         """
+
         with self._connect() as conn:
             conn.execute(CREATE_TABLE_SQL)
 
     def has_application(self, vk_id: str) -> bool:
         """
-            Проверяет, есть ли уже заявка от пользователя с данным vk_id
-
-            :param vk_id: Идентификатор пользователя (строка)
-            :return: bool — True, если заявка существует, иначе False
+            Возвращает True, если заявка от пользователя с данным vk_id уже есть
         """
 
         with self._connect() as conn:
@@ -85,12 +72,8 @@ class Database:
 
     def save_application(self, answers: dict, vk_id: str) -> None:
         """
-            Сохраняет заявку пользователя в базу данных
-            и шифрует паспортные данные перед сохранением
-
-            :param answers: Словарь с ответами пользователя на вопросы опроса
-            :param vk_id: Идентификатор пользователя (строка)
-            :return: Ничего не возвращает
+        Сохраняет заявку в БД; номер паспорта шифруется перед записью\n
+        При повторном вызове с тем же vk_id запись перезаписывается (INSERT OR REPLACE)
         """
 
         encrypted_passport = self.encryptor.encrypt(answers["passport_number"])

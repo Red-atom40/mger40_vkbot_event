@@ -7,20 +7,13 @@ load_dotenv()
 
 class Config:
     """
-        Класс конфигурации, который читает необходимые 
-        параметры из переменных окружения
-
-        - vk_token
-        - session_timeout
-        - db_path
-        - key_path
+        Читает параметры из переменных окружения или .env файла:
+        vk_token, session_timeout, db_path, key_path
     """
 
     def __init__(self) -> None:
         """
-            Инициализирует конфигурацию, загружая параметры из переменных окружения
-
-            :return: Ничего не возвращает
+            Загружает параметры из переменных окружения
         """
 
         self.vk_token: str = os.getenv("VK_TOKEN", "")
