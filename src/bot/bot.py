@@ -62,7 +62,12 @@ class VKBot:
             self._admin.handle(vk_id, event.user_id, text)
             return
 
-        # Пользователь хочет начать опрос
+        # пользователь отвечает на вопрос о мероприятии
+        event_id = self.db.get_pending_rsvp_event(vk_id)
+        if event_id:
+            self._handle_rsvp(vk_id, event.user_id, event_id, text)
+            return
+
         if text.lower() in START_COMMANDS:
             self._start_quiz(vk_id, event.user_id)
             return
@@ -78,6 +83,15 @@ class VKBot:
             return
 
         self._process_answer(vk_id, event.user_id, session, text)
+
+    def _handle_rsvp(self, vk_id: str, user_id: int, event_id: str, text: str) -> None:
+        answer = text.lower().strip()
+        if answer not in ("да", "нет"):
+            self._client.send(user_id, "Пожалуйста, ответьте «да» или «нет».")
+            return
+        self.db.save_rsvp_answer(vk_id, event_id, answer)
+        logger.info(f"RSVP vk_id={vk_id} event={event_id} answer={answer!r}")
+        self._client.send(user_id, "Спасибо! Ваш ответ записан.")
 
     def _start_quiz(self, vk_id: str, user_id: int) -> None:
         """

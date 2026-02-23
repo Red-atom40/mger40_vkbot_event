@@ -1,0 +1,16 @@
+version: "3"
+
+tasks:
+  sync:
+    desc: Установить зависимости
+    cmd: uv sync
+
+  run:
+    desc: Запустить бота
+    cmd: uv run python src/main.py
+
+  default:
+    desc: Синхронизировать зависимости и запустить бота
+    cmds:
+      - task: sync
+      - task: run

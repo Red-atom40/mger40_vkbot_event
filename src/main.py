@@ -1,7 +1,5 @@
 from config import Config
-from database.admins import AdminRepository
 from database.database import Database
-from database.stats import StatsRepository
 from log import setup_logging
 from security.encryption import Encryptor
 from bot.admin import AdminHandler
@@ -24,11 +22,9 @@ def main() -> None:
         )
 
     encryptor = Encryptor(config.key_path)
-    db = Database(config.db_path, encryptor)
+    db = Database(config.db_path, encryptor, config.admin_ids)
     client = VkClient(config.vk_token)
-    admin_repo = AdminRepository(config.db_path, config.admin_ids)
-    stats_repo = StatsRepository(config.db_path)
-    admin = AdminHandler(admin_repo, stats_repo, client)
+    admin = AdminHandler(db, client)
 
     if config.group_id:
         broadcaster = Broadcaster(

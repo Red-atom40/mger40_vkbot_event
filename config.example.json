@@ -8,8 +8,8 @@
     "admin_ids": [458508216],
     "group_id": 236058783,
     "event_links": [
-        "Ссылка на чат 1: https://vk.me/join/XXXXX",
-        "Ссылка на чат 2: https://vk.me/join/YYYYY"
+        "Ссылка на чат 1: https://vk.me",
+        "Ссылка на чат 2: https://vk.me"
     ],
-    "broadcast_tag": "@мероприятие"
+    "broadcast_tag": "#мероприятие"
 }

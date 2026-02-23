@@ -1,24 +1,21 @@
 from loguru import logger
 
 from bot.client import VkClient
-from database.admins import AdminRepository
-from database.stats import Stats, StatsRepository
+from database.database import Database, Stats
 
 
 class AdminHandler:
     """
         Обрабатывает команды администраторов, поступающие через личные сообщения бота.\n
-        Команды начинаются с «/»; доступ проверяется через AdminRepository
+        Команды начинаются с «/»; доступ проверяется через Database
     """
 
     def __init__(
         self,
-        admins: AdminRepository,
-        stats: StatsRepository,
+        admins: Database,
         client: VkClient,
     ) -> None:
         self._admins = admins
-        self._stats = stats
         self._client = client
 
     def is_admin_command(self, vk_id: str, text: str) -> bool:
@@ -56,11 +53,10 @@ class AdminHandler:
                     f"Неизвестная команда: {cmd}\nНапишите /help для списка команд.",
                 )
 
-    # ------------------------------------------------------------------
-    # Команды
-    # ------------------------------------------------------------------
-
     def _cmd_help(self, user_id: int) -> None:
+        """
+            Список всех команд для администраторов
+        """
         self._client.send(
             user_id,
             (
@@ -73,32 +69,45 @@ class AdminHandler:
         )
 
     def _cmd_stats(self, user_id: int) -> None:
-        stats = self._stats.collect()
+        """
+            Собирает статистику по заявкам через StatsRepository и отправляет администратору в виде текста
+        """
+        stats = self._admins.collect_stats()
         self._client.send(user_id, _format_stats(stats))
 
     def _cmd_addadmin(self, vk_id: str, user_id: int, args: list[str]) -> None:
+        """
+            Добавляет администратора с данным vk_id в БД\n
+        """
         if not args:
-            self._client.send(user_id, "Укажите vk_id пользователя: /addadmin 123456")
+            self._client.send(
+                user_id, "Укажите vk_id пользователя: /addadmin 123456")
             return
 
         target = args[0]
 
         if self._admins.is_admin(target):
-            self._client.send(user_id, f"Пользователь {target} уже является администратором.")
+            self._client.send(
+                user_id, f"Пользователь {target} уже является администратором.")
             return
 
-        self._admins.add(target, added_by=vk_id)
+        self._admins.add_admin(target, added_by=vk_id)
         logger.info(f"Admin added: {target} by {vk_id}")
-        self._client.send(user_id, f"Пользователь {target} добавлен в администраторы.")
+        self._client.send(
+            user_id, f"Пользователь {target} добавлен в администраторы.")
 
     def _cmd_removeadmin(self, vk_id: str, user_id: int, args: list[str]) -> None:
+        """
+            Удаляет администратора с данным vk_id из БД\n
+        """
         if not args:
-            self._client.send(user_id, "Укажите vk_id пользователя: /removeadmin 123456")
+            self._client.send(
+                user_id, "Укажите vk_id пользователя: /removeadmin 123456")
             return
 
         target = args[0]
 
-        if not self._admins.remove(target):
+        if not self._admins.remove_admin(target):
             self._client.send(
                 user_id,
                 f"Пользователь {target} — суперадмин из config.json, его нельзя удалить через бота.",
@@ -106,21 +115,24 @@ class AdminHandler:
             return
 
         logger.info(f"Admin removed: {target} by {vk_id}")
-        self._client.send(user_id, f"Пользователь {target} удалён из администраторов.")
+        self._client.send(
+            user_id, f"Пользователь {target} удалён из администраторов.")
 
     def _cmd_admins(self, user_id: int) -> None:
-        admins = self._admins.list_all()
+        """
+            Отправляет администратору список всех администраторов, включая суперадминов (которые идут первыми)
+        """
+        admins = self._admins.list_admins()
         if not admins:
             self._client.send(user_id, "Список администраторов пуст.")
             return
         self._client.send(user_id, "Администраторы:\n" + "\n".join(admins))
 
 
-# ------------------------------------------------------------------
-# Форматирование статистики
-# ------------------------------------------------------------------
-
 def _format_stats(s: Stats) -> str:
+    """
+        Форматирует статистику в удобочитаемый текст для отправки администратору
+    """
     lines = [
         "Статистика заявок",
         f"Всего заявок: {s.total}",
@@ -144,22 +156,3 @@ def _format_stats(s: Stats) -> str:
         lines.append(f"  {answer}: {cnt}")
 
     return "\n".join(lines)
-
-
-# ------------------------------------------------------------------
-# TODO (предложения по развитию админки)
-# ------------------------------------------------------------------
-#
-# /broadcast <текст> — рассылка сообщения всем, кто подал заявку
-#
-# /export — выгрузка всех заявок в CSV-файл (отправить документом в ВК)
-#
-# /find <vk_id> — посмотреть данные конкретной заявки
-#
-# /delete <vk_id> — удалить заявку (например, дубль или тест)
-#
-# /pending — список заявок за последний час (мониторинг активности)
-#
-# /ban <vk_id> — заблокировать пользователя: бот перестаёт отвечать ему
-#
-# /unban <vk_id> — снять блокировку
