@@ -5,6 +5,7 @@ from loguru import logger
 from domain.quiz import Quiz
 from domain.step import STEPS, START_COMMANDS
 
+from bot.admin import AdminHandler
 from bot.client import VkClient
 from config import Config
 from database.database import Database
@@ -19,14 +20,15 @@ class VKBot:
         и сохраняет заявки через Database
     """
 
-    def __init__(self, config: Config, db: Database, client: VkClient) -> None:
+    def __init__(self, config: Config, db: Database, client: VkClient, admin: AdminHandler) -> None:
         """
-            Принимает конфиг, репозиторий заявок и VK-клиент
+            Принимает конфиг, репозиторий заявок, VK-клиент и обработчик админ-команд
         """
 
         self.config = config
         self.db = db
         self._client = client
+        self._admin = admin
         self._sessions: dict[str, Session] = {}
 
     def run(self) -> None:
@@ -54,6 +56,11 @@ class VKBot:
         text = event.text.strip()
 
         logger.debug(f"Received message from vk_id={vk_id}: {text!r}")
+
+        # Проверяем, не является ли это командой администратора
+        if self._admin.is_admin_command(vk_id, text):
+            self._admin.handle(vk_id, event.user_id, text)
+            return
 
         # Пользователь хочет начать опрос
         if text.lower() in START_COMMANDS:

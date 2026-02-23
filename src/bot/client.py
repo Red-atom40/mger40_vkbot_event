@@ -5,6 +5,7 @@ from typing import Iterator
 from loguru import logger
 import vk_api
 import vk_api.exceptions
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.longpoll import VkLongPoll, VkEventType, Event
 
 _RECONNECT_DELAY = 5
@@ -50,3 +51,14 @@ class VkClient:
             except Exception as e:
                 logger.warning(f"LongPoll error: {e}. Reconnecting in {_RECONNECT_DELAY}s...")
                 time.sleep(_RECONNECT_DELAY)
+
+    def listen_wall(self, group_id: int) -> Iterator[str]:
+        """
+            Генератор текстов новых постов на стене группы (WALL_POST_NEW)\n
+            Работает через VkBotLongPoll с токеном сообщества
+        """
+
+        bot_longpoll = VkBotLongPoll(self._session, group_id)
+        for event in bot_longpoll.listen():
+            if event.type == VkBotEventType.WALL_POST_NEW:
+                yield event.object.get("text", "")

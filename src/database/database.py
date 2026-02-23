@@ -70,6 +70,15 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def get_all_vk_ids(self) -> list[str]:
+        """
+            Возвращает vk_id всех подавших заявку
+        """
+
+        with self._connect() as conn:
+            rows = conn.execute("SELECT vk_id FROM applications").fetchall()
+        return [row["vk_id"] for row in rows]
+
     def save_application(self, quiz: Quiz) -> None:
         """
         Сохраняет заявку в БД; номер паспорта шифруется перед записью\n

@@ -173,18 +173,12 @@ def validate_contact_info(value: str) -> ValidationResult:
         Контакт — email (user@example.com) или Telegram-username (@username)
     """
 
-    stripped = value.strip()
-
-    if stripped.startswith("@"):
-        if re.fullmatch(r"@[a-zA-Z0-9_]{1,32}", stripped):
-            return True, None
-    elif re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", stripped):
-        return True, None
-
-    return False, (
-        "Введите email (например, ivan@mail.ru) или Telegram-username "
-        "(например, @ivan_ivanov)."
-    )
+    if not value.strip():
+        return False, (
+            "Введите email (например, ivan@mail.ru) или Telegram-username "
+            "(например, @ivan_ivanov)."
+        )
+    return True, None
 
 
 def validate_education_level(value: str) -> ValidationResult:
