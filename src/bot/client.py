@@ -2,6 +2,7 @@ import random
 import time
 from typing import Iterator
 
+from loguru import logger
 import vk_api
 import vk_api.exceptions
 from vk_api.longpoll import VkLongPoll, VkEventType, Event
@@ -25,7 +26,7 @@ class VkClient:
             При ошибке VK API печатает её и продолжает работу
         """
 
-        print(f"Sending message to vk_id={user_id}: {message!r}")
+        logger.debug(f"Sending message to vk_id={user_id}: {message!r}")
         try:
             self._api.messages.send(
                 user_id=user_id,
@@ -33,7 +34,7 @@ class VkClient:
                 random_id=random.getrandbits(31),
             )
         except vk_api.exceptions.ApiError as e:
-            print(f"VK API error when sending to vk_id={user_id}: {e}")
+            logger.error(f"VK API error when sending to vk_id={user_id}: {e}")
 
     def listen(self) -> Iterator[Event]:
         """
@@ -47,5 +48,5 @@ class VkClient:
                     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
                         yield event
             except Exception as e:
-                print(f"LongPoll error: {e}. Reconnecting in {_RECONNECT_DELAY}s...")
+                logger.warning(f"LongPoll error: {e}. Reconnecting in {_RECONNECT_DELAY}s...")
                 time.sleep(_RECONNECT_DELAY)

@@ -175,10 +175,10 @@ def validate_contact_info(value: str) -> ValidationResult:
 
     stripped = value.strip()
 
-    email_re = re.compile(r"^[\w.\-+]+@[\w.\-]+\.[a-zA-Z]{2,}$")
-    tg_re = re.compile(r"^@[a-zA-Z0-9_]{4,32}$")
-
-    if email_re.match(stripped) or tg_re.match(stripped):
+    if stripped.startswith("@"):
+        if re.fullmatch(r"@[a-zA-Z0-9_]{1,32}", stripped):
+            return True, None
+    elif re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", stripped):
         return True, None
 
     return False, (

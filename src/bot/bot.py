@@ -1,5 +1,7 @@
 import sqlite3
 
+from loguru import logger
+
 from domain.quiz import Quiz
 from domain.step import STEPS, START_COMMANDS
 
@@ -7,7 +9,7 @@ from bot.client import VkClient
 from config import Config
 from database.database import Database
 from domain.session import Session
-from validation.validation import validate
+from validation.validators import validate
 
 
 
@@ -32,16 +34,16 @@ class VKBot:
             Запускает бесконечный цикл LongPoll и передаёт события в _handle_message
         """
 
-        print("VK Bot is running... Press Ctrl+C to stop.")
+        logger.info("VK Bot is running... Press Ctrl+C to stop.")
 
         try:
             for event in self._client.listen():
                 try:
                     self._handle_message(event)
                 except Exception as e:
-                    print(f"Error handling message: {e}")   
+                    logger.exception(f"Error handling message: {e}")
         except KeyboardInterrupt:
-            print("VK Bot stopped by user.")
+            logger.info("VK Bot stopped by user.")
 
     def _handle_message(self, event) -> None:
         """
@@ -51,7 +53,7 @@ class VKBot:
         vk_id = str(event.user_id)
         text = event.text.strip()
 
-        print(f"Received message from vk_id={vk_id}: {text!r}")
+        logger.debug(f"Received message from vk_id={vk_id}: {text!r}")
 
         # Пользователь хочет начать опрос
         if text.lower() in START_COMMANDS:
@@ -77,12 +79,12 @@ class VKBot:
 
         # Проверяем, есть ли уже заявка от этого пользователя
         if self.db.has_application(vk_id):
-            print(f"Duplicate application attempt vk_id={vk_id}")
+            logger.warning(f"Duplicate application attempt vk_id={vk_id}")
             self._client.send(
                 user_id, "Ваша заявка уже принята. Спасибо за интерес к «Молодой Гвардии»!")
             return
 
-        print(f"Quiz started vk_id={vk_id}")
+        logger.info(f"Quiz started vk_id={vk_id}")
         session = Session(vk_id, self.config.session_timeout)
         self._sessions[vk_id] = session
 
@@ -115,7 +117,7 @@ class VKBot:
             return
 
         # Сохраняем ответ и переходим к следующему шагу
-        print(f"Answer saved vk_id={vk_id} step={session.step_index} key={current_step.key}")
+        logger.debug(f"Answer saved vk_id={vk_id} step={session.step_index} key={current_step.key}")
         session.answers[current_step.key] = text
         session.step_index += 1
         session.touch()
@@ -131,18 +133,18 @@ class VKBot:
         """
 
         # Сохраняем заявку в базе данных
-        print(f"Saving application vk_id={vk_id}")
+        logger.info(f"Saving application vk_id={vk_id}")
         try:
             self.db.save_application(Quiz.from_answers(session.answers, vk_id))
         except sqlite3.Error as e:
-            print(f"DB error vk_id={vk_id}: {e}")
+            logger.error(f"DB error vk_id={vk_id}: {e}")
             self._client.send(
                 user_id,
                 "Не удалось сохранить заявку из-за внутренней ошибки. Попробуйте ещё раз позже.",
             )
             return
 
-        print(f"Application accepted vk_id={vk_id}")
+        logger.info(f"Application accepted vk_id={vk_id}")
         del self._sessions[vk_id]
 
         self._client.send(

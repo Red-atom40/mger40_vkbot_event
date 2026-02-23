@@ -1,7 +1,7 @@
 import sqlite3
 
 from domain.quiz import Quiz
-from tools.encryption import Encryptor
+from security.encryption import Encryptor
 
 
 CREATE_TABLE_SQL = """

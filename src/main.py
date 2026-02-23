@@ -1,6 +1,7 @@
 from config import Config
 from database.database import Database
-from tools.encryption import Encryptor
+from log import setup_logging
+from security.encryption import Encryptor
 from bot.bot import VKBot
 from bot.client import VkClient
 
@@ -14,6 +15,7 @@ from bot.client import VkClient
 
 def main() -> None:
     config = Config()
+    setup_logging(config.log_level, config.log_format)
 
     # Проверяем, что токен VK задан
     if not config.vk_token:
