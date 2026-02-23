@@ -1,0 +1,8 @@
+{
+    "vk_token": "your_community_token_here",
+    "session_timeout": 600,
+    "db_path": "quiz.db",
+    "key_path": "secret.key",
+    "log_level": "INFO",
+    "log_format": "text"
+}

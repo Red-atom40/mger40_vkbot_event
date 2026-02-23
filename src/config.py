@@ -1,24 +1,26 @@
-import os
+import json
+from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
+_CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
 
 class Config:
     """
-        Читает параметры из переменных окружения или .env файла:\n
+        Читает параметры из config.json в корне проекта:\n
         vk_token, session_timeout, db_path, key_path, log_level, log_format
     """
 
-    def __init__(self) -> None:
+    def __init__(self, path: Path = _CONFIG_PATH) -> None:
         """
-            Загружает параметры из переменных окружения
+            Загружает параметры из JSON-файла
         """
 
-        self.vk_token: str = os.getenv("VK_TOKEN", "")
-        self.session_timeout: int = int(os.getenv("SESSION_TIMEOUT", "600"))
-        self.db_path: str = os.getenv("DB_PATH", "../quiz.db")
-        self.key_path: str = os.getenv("KEY_PATH", "../secret.key")
-        self.log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()
-        self.log_format: str = os.getenv("LOG_FORMAT", "text").lower()
+        with open(path, encoding="utf-8") as f:
+            data: dict = json.load(f)
+
+        self.vk_token: str = data.get("vk_token", "")
+        self.session_timeout: int = int(data.get("session_timeout", 600))
+        self.db_path: str = data.get("db_path", "quiz.db")
+        self.key_path: str = data.get("key_path", "secret.key")
+        self.log_level: str = data.get("log_level", "INFO").upper()
+        self.log_format: str = data.get("log_format", "text").lower()

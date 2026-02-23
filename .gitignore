@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .env
+config.json
 secret.key
 quiz.db
 /seed
