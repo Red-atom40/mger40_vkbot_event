@@ -9,3 +9,4 @@ wheels/
 config.json
 secret.key
 quiz.db
+.ruff_cache/
