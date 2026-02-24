@@ -1,5 +1,4 @@
 import sys
-from pathlib import Path
 
 from loguru import logger
 
@@ -30,11 +29,7 @@ def main() -> None:
     client = VkClient(config.vk_token)
 
     broadcaster = Broadcaster(
-        client,
-        db,
-        config.group_id,
-        config.event_links,
-        config.broadcast_tag
+        client, db, config.group_id, config.event_links, config.broadcast_tag
     )
     broadcaster.start()
 

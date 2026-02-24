@@ -30,8 +30,7 @@ class Broadcaster:
 
     def start(self) -> None:
         """Запускает поток для прослушивания новых постов на стене группы и трансляции мероприятий"""
-        t = threading.Thread(target=self.run, daemon=True,
-                             name="BroadcasterThread")
+        t = threading.Thread(target=self.run, daemon=True, name="BroadcasterThread")
         t.start()
         logger.info("Broadcaster started.")
 
@@ -62,6 +61,7 @@ class Broadcaster:
             self.db.add_pending_rsvp(vk_id, event_id)
             self.client.send(vk_id, message)
             self.client.send(
-                vk_id, "Вы планируете посетить это мероприятие? (да / нет)")
+                vk_id, "Вы планируете посетить это мероприятие? (да / нет)"
+            )
 
         logger.info(f"Broadcast for event {event_id} sent to all users.")

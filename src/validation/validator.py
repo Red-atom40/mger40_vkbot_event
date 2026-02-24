@@ -125,21 +125,21 @@ def validate_study_or_work_place(value: str) -> ValidationResult:
 
 
 VALIDATORS: dict[str, Callable[[str], ValidationResult]] = {
-    "fio":                   validate_fio,
-    "birth_date":            validate_birth_date,
-    "region":                validate_region,
-    "city":                  validate_city,
-    "street":                validate_street,
-    "house":                 validate_house,
-    "passport_number":       validate_passport_number,
-    "passport_issued_by":    validate_passport_issued_by,
-    "passport_issue_date":   validate_passport_issue_date,
-    "phone":                 validate_phone,
-    "contact_info":          validate_contact_info,
-    "education_level":       validate_education_level,
-    "is_member":             validate_is_member,
+    "fio": validate_fio,
+    "birth_date": validate_birth_date,
+    "region": validate_region,
+    "city": validate_city,
+    "street": validate_street,
+    "house": validate_house,
+    "passport_number": validate_passport_number,
+    "passport_issued_by": validate_passport_issued_by,
+    "passport_issue_date": validate_passport_issue_date,
+    "phone": validate_phone,
+    "contact_info": validate_contact_info,
+    "education_level": validate_education_level,
+    "is_member": validate_is_member,
     "previous_organizations": validate_previous_organizations,
-    "study_or_work_place":   validate_study_or_work_place,
+    "study_or_work_place": validate_study_or_work_place,
 }
 
 
@@ -147,5 +147,8 @@ def validate(key: str, value: str) -> ValidationResult:
     """Валидирует ответ пользователя на текущем шаге анкеты"""
     validator = VALIDATORS.get(key)
     if validator is None:
-        return (bool(value.strip()), "Поле не может быть пустым." if not value.strip() else None)
+        return (
+            bool(value.strip()),
+            "Поле не может быть пустым." if not value.strip() else None,
+        )
     return validator(value)

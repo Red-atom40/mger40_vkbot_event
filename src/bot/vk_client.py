@@ -35,7 +35,8 @@ class VkClient:
         while True:
             try:
                 yield from (
-                    e for e in self.longpoll.listen()
+                    e
+                    for e in self.longpoll.listen()
                     if e.type == VkEventType.MESSAGE_NEW and e.to_me
                 )
             except Exception as e:
@@ -46,6 +47,7 @@ class VkClient:
         """Генератор для прослушивания новых постов на стене группы, содержащих тег для трансляции мероприятий"""
         bot_longpoll = VkBotLongPoll(self.session, group_id)
         yield from (
-            e.object.get("text", "") for e in bot_longpoll.listen()
+            e.object.get("text", "")
+            for e in bot_longpoll.listen()
             if e.type == VkBotEventType.WALL_POST_NEW
         )

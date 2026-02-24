@@ -24,7 +24,7 @@ class VKBot:
             for event in self.client.listen():
                 try:
                     self.handle_message(event)
-                except Exception as e:
+                except Exception:
                     logger.exception("error: {e}")
         except KeyboardInterrupt:
             logger.info("bot stopped")
@@ -56,7 +56,9 @@ class VKBot:
 
         if session is None:
             self.client.send(
-                user_id, "Привет! Чтобы начать заполнение анкеты, напиши «вступить» или «заявка».")
+                user_id,
+                "Привет! Чтобы начать заполнение анкеты, напиши «вступить» или «заявка».",
+            )
             return
 
         self._process_answer(user_id, session, text)
@@ -75,11 +77,12 @@ class VKBot:
     def _start_quiz(self, user_id: int) -> None:
         """Начинает новый сеанс заполнения заявки для пользователя"""
         if self.db.has_application(user_id):
-
             logger.warning(f"Duplicate application attempt vk_id={user_id}")
 
             self.client.send(
-                user_id, "Ваша заявка уже принята. Спасибо за интерес к «Молодой Гвардии»!")
+                user_id,
+                "Ваша заявка уже принята. Спасибо за интерес к «Молодой Гвардии»!",
+            )
             return
 
         logger.info(f"Quiz started vk_id={user_id}")
@@ -89,8 +92,7 @@ class VKBot:
             user_id,
             "Добро пожаловать! Вы начинаете заполнение заявки на вступление в «Молодую Гвардию».\n"
             f"На ответы отводится {self.config.session_timeout // 60} минут. "
-            "Если время выйдет — нужно начать заново.\n\n"
-            + STEPS[0].question,
+            "Если время выйдет — нужно начать заново.\n\n" + STEPS[0].question,
         )
 
     def _process_answer(self, user_id: int, session: Session, text: str) -> None:
@@ -98,12 +100,12 @@ class VKBot:
         ok, error_msg = validate(current_step.key, text)
 
         if not ok:
-            self.client.send(
-                user_id, f"{error_msg}\n\n{current_step.question}")
+            self.client.send(user_id, f"{error_msg}\n\n{current_step.question}")
             return
 
         logger.debug(
-            f"Answer saved vk_id={user_id} step={session.step_index} key={current_step.key}")
+            f"Answer saved vk_id={user_id} step={session.step_index} key={current_step.key}"
+        )
         session.answers[current_step.key] = text
         session.step_index += 1
         session.touch()
@@ -116,8 +118,7 @@ class VKBot:
     def finalize_quiz(self, user_id: int, session: Session) -> None:
         logger.info(f"Saving application vk_id={user_id}")
         try:
-            self.db.save_application(
-                Quiz.from_answers(session.answers, user_id))
+            self.db.save_application(Quiz.from_answers(session.answers, user_id))
         except sqlite3.Error as e:
             logger.error(f"DB error vk_id={user_id}: {e}")
             self.client.send(
@@ -151,26 +152,28 @@ class VKBot:
                     "/admins — список всех администраторов",
                 )
             case "/stats":
-                self.client.send(user_id, format_stats(
-                    self.db.collect_stats()))
+                self.client.send(user_id, format_stats(self.db.collect_stats()))
             case "/addadmin":
                 self.cmd_addadmin(user_id, args)
             case "/removeadmin":
                 self.cmd_removeadmin(user_id, args)
             case "/admins":
                 admins = self.db.list_admins()
-                msg = "Администраторы:\n" + \
-                    "\n".join(
-                        str(a) for a in admins) if admins else "Список администраторов пуст."
+                msg = (
+                    "Администраторы:\n" + "\n".join(str(a) for a in admins)
+                    if admins
+                    else "Список администраторов пуст."
+                )
                 self.client.send(user_id, msg)
             case _:
                 self.client.send(
-                    user_id, f"Неизвестная команда: {cmd}\nНапишите /help для списка команд.")
+                    user_id,
+                    f"Неизвестная команда: {cmd}\nНапишите /help для списка команд.",
+                )
 
     def cmd_addadmin(self, user_id: int, args: list[str]) -> None:
         if not args:
-            self.client.send(
-                user_id, "Укажите vk_id пользователя: /addadmin 123456")
+            self.client.send(user_id, "Укажите vk_id пользователя: /addadmin 123456")
             return
         try:
             target = int(args[0])
@@ -179,17 +182,16 @@ class VKBot:
             return
         if self.db.is_admin(target):
             self.client.send(
-                user_id, f"Пользователь {target} уже является администратором.")
+                user_id, f"Пользователь {target} уже является администратором."
+            )
             return
         self.db.add_admin(target, added_by=user_id)
         logger.info(f"Admin added: {target} by {user_id}")
-        self.client.send(
-            user_id, f"Пользователь {target} добавлен в администраторы.")
+        self.client.send(user_id, f"Пользователь {target} добавлен в администраторы.")
 
     def cmd_removeadmin(self, user_id: int, args: list[str]) -> None:
         if not args:
-            self.client.send(
-                user_id, "Укажите vk_id пользователя: /removeadmin 123456")
+            self.client.send(user_id, "Укажите vk_id пользователя: /removeadmin 123456")
             return
         try:
             target = int(args[0])
@@ -203,8 +205,7 @@ class VKBot:
             )
             return
         logger.info(f"Admin removed: {target} by {user_id}")
-        self.client.send(
-            user_id, f"Пользователь {target} удалён из администраторов.")
+        self.client.send(user_id, f"Пользователь {target} удалён из администраторов.")
 
 
 def format_stats(s: Stats) -> str:
@@ -213,7 +214,8 @@ def format_stats(s: Stats) -> str:
         "Статистика заявок",
         f"Всего заявок: {s.total}",
         f"Средний возраст: {s.average_age if s.average_age is not None else '—'}",
-        "", "Топ городов:",
+        "",
+        "Топ городов:",
     ]
     for i, (city, cnt) in enumerate(s.top_cities, 1):
         lines.append(f"  {i}. {city} — {cnt}")

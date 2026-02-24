@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import date, datetime
 import sqlite3
 import threading
@@ -49,11 +48,12 @@ CREATE TABLE IF NOT EXISTS rsvp (
 
 
 class Database:
-    def __init__(self,
-                 db_path: str,
-                 encryptor: Encryptor,
-                 superadmin_ids: list[int] | None = None
-                 ) -> None:
+    def __init__(
+        self,
+        db_path: str,
+        encryptor: Encryptor,
+        superadmin_ids: list[int] | None = None,
+    ) -> None:
         """Инициализатор класса Database для работы с базой данных SQLite\n"""
         self.encryptor = encryptor
         self.superadmins: tuple[int, ...] = tuple(superadmin_ids or [])
@@ -81,8 +81,7 @@ class Database:
 
     def get_all_vk_ids(self) -> list[int]:
         with self.lock:
-            rows = self.conn.execute(
-                "SELECT vk_id FROM applications").fetchall()
+            rows = self.conn.execute("SELECT vk_id FROM applications").fetchall()
         return [row["vk_id"] for row in rows]
 
     def save_application(self, quiz: Quiz) -> None:
@@ -116,7 +115,7 @@ class Database:
                     quiz.is_member,
                     quiz.previous_organizations,
                     quiz.study_or_work_place,
-                    quiz.created_at
+                    quiz.created_at,
                 ),
             )
             self.conn.commit()
@@ -157,7 +156,9 @@ class Database:
                 "SELECT vk_id FROM admins ORDER BY added_at"
             ).fetchall()
         db_admins = [row["vk_id"] for row in rows]
-        return sorted(self.superadmins) + [a for a in db_admins if a not in self.superadmins]
+        return sorted(self.superadmins) + [
+            a for a in db_admins if a not in self.superadmins
+        ]
 
     def collect_stats(self, top_n: int = 10) -> Stats:
         """Собирает статистику по заявкам для отображения в админ-панели по команде /stats"""
@@ -179,13 +180,11 @@ class Database:
         )
 
     def stat_total(self) -> int:
-        row = self.conn.execute(
-            "SELECT COUNT(*) FROM applications").fetchone()
+        row = self.conn.execute("SELECT COUNT(*) FROM applications").fetchone()
         return row[0]
 
     def stat_average_age(self) -> float | None:
-        rows = self.conn.execute(
-            "SELECT birth_date FROM applications").fetchall()
+        rows = self.conn.execute("SELECT birth_date FROM applications").fetchall()
         if not rows:
             return None
 

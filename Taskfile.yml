@@ -13,6 +13,14 @@ tasks:
     desc: Удалить все __pycache__ директории
     cmd: python -c "import shutil, pathlib; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('__pycache__')]"
 
+  lint:
+    desc: Проверить код с помощью ruff
+    cmd: uv run ruff check src/ seed/
+
+  format:
+    desc: Форматировать код с помощью ruff
+    cmd: uv run ruff format src/ seed/
+
   seed:
     desc: Наполнить БД тестовыми данными (--count N, по умолчанию 500)
     cmd: uv run python seed/seed.py {{.CLI_ARGS}}
