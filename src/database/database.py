@@ -1,15 +1,15 @@
-import sqlite3
-import threading
 from dataclasses import dataclass
 from datetime import date, datetime
+import sqlite3
+import threading
 
-from domain.quiz import Quiz
-from security.encryption import Encryptor
+from models.quiz import Quiz, Stats
+from security.encryptor import Encryptor
 
 
-_CREATE_APPLICATIONS_SQL = """
+create_application_table = """
 CREATE TABLE IF NOT EXISTS applications (
-    vk_id                   TEXT PRIMARY KEY,
+    vk_id                   INTEGER PRIMARY KEY,
     fio                     TEXT NOT NULL,
     birth_date              TEXT NOT NULL,
     region                  TEXT NOT NULL,
@@ -29,17 +29,17 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 """
 
-_CREATE_ADMINS_SQL = """
+create_admins_table = """
 CREATE TABLE IF NOT EXISTS admins (
-    vk_id       TEXT PRIMARY KEY,
-    added_by    TEXT NOT NULL,
+    vk_id       INTEGER PRIMARY KEY,
+    added_by    INTEGER NOT NULL,
     added_at    REAL NOT NULL
 );
 """
 
-_CREATE_RSVP_SQL = """
+create_rsvp_table = """
 CREATE TABLE IF NOT EXISTS rsvp (
-    vk_id       TEXT NOT NULL,
+    vk_id       INTEGER NOT NULL,
     event_id    TEXT NOT NULL,
     answer      TEXT,
     answered_at REAL,
@@ -48,75 +48,47 @@ CREATE TABLE IF NOT EXISTS rsvp (
 """
 
 
-@dataclass
-class Stats:
-    """
-        Сводная статистика по заявкам
-    """
-
-    total: int
-    average_age: float | None
-    top_cities: list[tuple[str, int]]
-    top_regions: list[tuple[str, int]]
-    top_education: list[tuple[str, int]]
-    party_members: dict[str, int]
-
-
 class Database:
-    """
-        Единый репозиторий: заявки, администраторы, статистика.\n
-        Использует одно постоянное соединение с SQLite\n
-    """
-
-    def __init__(self, db_path: str, encryptor: Encryptor, superadmin_ids: list[str] | None = None) -> None:
+    def __init__(self,
+                 db_path: str,
+                 encryptor: Encryptor,
+                 superadmin_ids: list[int] | None = None
+                 ) -> None:
+        """Инициализатор класса Database для работы с базой данных SQLite\n"""
         self.encryptor = encryptor
-        self._superadmins: tuple[str, ...] = tuple(superadmin_ids or [])
-        self._lock = threading.Lock()
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self.superadmins: tuple[int, ...] = tuple(superadmin_ids or [])
+        self.lock = threading.Lock()
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._init_db()
 
     def close(self) -> None:
-        self._conn.close()
+        self.conn.close()
 
     def _init_db(self) -> None:
-        with self._lock:
-            self._conn.execute(_CREATE_APPLICATIONS_SQL)
-            self._conn.execute(_CREATE_ADMINS_SQL)
-            self._conn.execute(_CREATE_RSVP_SQL)
-            self._conn.commit()
+        with self.lock:
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute(create_application_table)
+            self.conn.execute(create_admins_table)
+            self.conn.execute(create_rsvp_table)
+            self.conn.commit()
 
-    def has_application(self, vk_id: str) -> bool:
-        """
-            Возвращает True, если заявка от пользователя с данным vk_id уже есть
-        """
-
-        with self._lock:
-            row = self._conn.execute(
+    def has_application(self, vk_id: int) -> bool:
+        with self.lock:
+            row = self.conn.execute(
                 "SELECT 1 FROM applications WHERE vk_id = ?", (vk_id,)
             ).fetchone()
         return row is not None
 
-    def get_all_vk_ids(self) -> list[str]:
-        """
-            Возвращает vk_id всех подавших заявку
-        """
-
-        with self._lock:
-            rows = self._conn.execute(
+    def get_all_vk_ids(self) -> list[int]:
+        with self.lock:
+            rows = self.conn.execute(
                 "SELECT vk_id FROM applications").fetchall()
         return [row["vk_id"] for row in rows]
 
     def save_application(self, quiz: Quiz) -> None:
-        """
-            Сохраняет заявку в БД; номер паспорта шифруется перед записью\n
-            При повторном вызове с тем же vk_id запись перезаписывается (INSERT OR REPLACE)
-        """
-
         encrypted_passport = self.encryptor.encrypt(quiz.passport_number)
-
-        with self._lock:
-            self._conn.execute(
+        with self.lock:
+            self.conn.execute(
                 """
                 INSERT OR REPLACE INTO applications (
                     vk_id, fio, birth_date, region, city, street, house,
@@ -144,65 +116,58 @@ class Database:
                     quiz.is_member,
                     quiz.previous_organizations,
                     quiz.study_or_work_place,
-                    quiz.created_at,
+                    quiz.created_at
                 ),
             )
-            self._conn.commit()
+            self.conn.commit()
 
-    def is_admin(self, vk_id: str) -> bool:
-        if vk_id in self._superadmins:
+    def is_admin(self, vk_id: int) -> bool:
+        if vk_id in self.superadmins:
             return True
-        with self._lock:
-            row = self._conn.execute(
+        with self.lock:
+            row = self.conn.execute(
                 "SELECT 1 FROM admins WHERE vk_id = ?", (vk_id,)
             ).fetchone()
         return row is not None
 
-    def add_admin(self, vk_id: str, added_by: str) -> None:
-        with self._lock:
-            self._conn.execute(
-                "INSERT OR IGNORE INTO admins (vk_id, added_by, added_at) VALUES (?, ?, ?)",
+    def add_admin(self, vk_id: int, added_by: int) -> None:
+        with self.lock:
+            self.conn.execute(
+                """INSERT OR IGNORE INTO admins (
+                    vk_id, added_by, added_at
+                ) VALUES (
+                    ?, ?, ?
+                )
+                """,
                 (vk_id, added_by, datetime.now().timestamp()),
             )
-            self._conn.commit()
+            self.conn.commit()
 
-    def remove_admin(self, vk_id: str) -> bool:
-        """
-            Удаляет администратора. Возвращает False если vk_id — суперадмин
-        """
-
-        if vk_id in self._superadmins:
+    def remove_admin(self, vk_id: int) -> bool:
+        if vk_id in self.superadmins:
             return False
-        with self._lock:
-            self._conn.execute("DELETE FROM admins WHERE vk_id = ?", (vk_id,))
-            self._conn.commit()
+        with self.lock:
+            self.conn.execute("DELETE FROM admins WHERE vk_id = ?", (vk_id,))
+            self.conn.commit()
         return True
 
-    def list_admins(self) -> list[str]:
-        """
-            Возвращает список всех администраторов; суперадмины идут первыми
-        """
-
-        with self._lock:
-            rows = self._conn.execute(
+    def list_admins(self) -> list[int]:
+        with self.lock:
+            rows = self.conn.execute(
                 "SELECT vk_id FROM admins ORDER BY added_at"
             ).fetchall()
         db_admins = [row["vk_id"] for row in rows]
-        return sorted(self._superadmins) + [a for a in db_admins if a not in self._superadmins]
+        return sorted(self.superadmins) + [a for a in db_admins if a not in self.superadmins]
 
     def collect_stats(self, top_n: int = 10) -> Stats:
-        """
-            Возвращает Stats с агрегированными данными по заявкам.
-            top_n — сколько позиций показывать в топах (по умолчанию 10)
-        """
-
-        with self._lock:
-            total = self._stat_total()
-            average_age = self._stat_average_age()
-            top_cities = self._stat_top("city", top_n)
-            top_regions = self._stat_top("region", top_n)
-            top_education = self._stat_top("education_level", top_n)
-            party_members = self._stat_party_members()
+        """Собирает статистику по заявкам для отображения в админ-панели по команде /stats"""
+        with self.lock:
+            total = self.stat_total()
+            average_age = self.stat_average_age()
+            top_cities = self.stat_top("city", top_n)
+            top_regions = self.stat_top("region", top_n)
+            top_education = self.stat_top("education_level", top_n)
+            party_members = self.stat_party_members()
 
         return Stats(
             total=total,
@@ -213,17 +178,13 @@ class Database:
             party_members=party_members,
         )
 
-    def _stat_total(self) -> int:
-        row = self._conn.execute(
+    def stat_total(self) -> int:
+        row = self.conn.execute(
             "SELECT COUNT(*) FROM applications").fetchone()
         return row[0]
 
-    def _stat_average_age(self) -> float | None:
-        """
-            birth_date хранится как ДД.ММ.ГГГГ — парсим в Python
-        """
-
-        rows = self._conn.execute(
+    def stat_average_age(self) -> float | None:
+        rows = self.conn.execute(
             "SELECT birth_date FROM applications").fetchall()
         if not rows:
             return None
@@ -244,8 +205,8 @@ class Database:
 
         return round(sum(ages) / len(ages), 1) if ages else None
 
-    def _stat_top(self, column: str, n: int) -> list[tuple[str, int]]:
-        rows = self._conn.execute(
+    def stat_top(self, column: str, n: int) -> list[tuple[str, int]]:
+        rows = self.conn.execute(
             f"""
             SELECT {column}, COUNT(*) AS cnt
             FROM applications
@@ -257,8 +218,8 @@ class Database:
         ).fetchall()
         return [(row[column], row["cnt"]) for row in rows]
 
-    def _stat_party_members(self) -> dict[str, int]:
-        rows = self._conn.execute(
+    def stat_party_members(self) -> dict[str, int]:
+        rows = self.conn.execute(
             """
             SELECT is_member, COUNT(*) AS cnt
             FROM applications
@@ -267,32 +228,26 @@ class Database:
         ).fetchall()
         return {row["is_member"]: row["cnt"] for row in rows}
 
-    # ------------------------------------------------------------------
-    # RSVP
-    # ------------------------------------------------------------------
-
-    def add_pending_rsvp(self, vk_id: str, event_id: str) -> None:
-        """ Регистрирует ожидание ответа после рассылки """
-        with self._lock:
-            self._conn.execute(
+    def add_pending_rsvp(self, vk_id: int, event_id: str) -> None:
+        with self.lock:
+            self.conn.execute(
                 "INSERT OR IGNORE INTO rsvp (vk_id, event_id) VALUES (?, ?)",
                 (vk_id, event_id),
             )
-            self._conn.commit()
+            self.conn.commit()
 
-    def get_pending_rsvp_event(self, vk_id: str) -> str | None:
-        """ Возвращает event_id если пользователь ещё не ответил, иначе None """
-        with self._lock:
-            row = self._conn.execute(
+    def get_pending_rsvp_event(self, vk_id: int) -> str | None:
+        with self.lock:
+            row = self.conn.execute(
                 "SELECT event_id FROM rsvp WHERE vk_id = ? AND answer IS NULL",
                 (vk_id,),
             ).fetchone()
         return row["event_id"] if row else None
 
-    def save_rsvp_answer(self, vk_id: str, event_id: str, answer: str) -> None:
-        with self._lock:
-            self._conn.execute(
+    def save_rsvp_answer(self, vk_id: int, event_id: str, answer: str) -> None:
+        with self.lock:
+            self.conn.execute(
                 "UPDATE rsvp SET answer = ?, answered_at = ? WHERE vk_id = ? AND event_id = ?",
                 (answer, datetime.now().timestamp(), vk_id, event_id),
             )
-            self._conn.commit()
+            self.conn.commit()

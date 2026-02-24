@@ -1,6 +1,5 @@
 {
-    "vk_token": "your_community_token_here",
-    "session_timeout": 600,
+    "vk_token": "your_vk_token_here",
     "db_path": "quiz.db",
     "key_path": "secret.key",
     "log_level": "INFO",
@@ -8,8 +7,8 @@
     "admin_ids": [458508216],
     "group_id": 236058783,
     "event_links": [
-        "Ссылка на чат 1: https://vk.me",
-        "Ссылка на чат 2: https://vk.me"
+        "Ссылка на чат 1: https://vk.me/join/XXXXX",
+        "Ссылка на чат 2: https://vk.me/join/YYYYY"
     ],
     "broadcast_tag": "#мероприятие"
 }
