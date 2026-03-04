@@ -1,5 +1,3 @@
-from security.encryptor import Encryptor
-from config import Config
 import argparse
 import random
 import sqlite3
@@ -9,6 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from security.encryptor import Encryptor
+from config import Config
 
 FIRST_NAMES = [
     "Александр",

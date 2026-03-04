@@ -8,8 +8,7 @@ from bot.vk_client import VkClient
 from database.database import Database
 
 
-reconnect_delay = 5
-broadcast_tag = "#мероприятие"
+
 
 
 class Broadcaster:
@@ -19,7 +18,8 @@ class Broadcaster:
         db: Database,
         group_id: int,
         event_links: list[str],
-        broadcast_tag: str = broadcast_tag,
+        broadcast_tag: str,
+        reconnect_delay: int = 5,
     ):
         """Инициализирует Broadcaster для прослушивания новых постов на стене группы"""
         self.client = client
@@ -27,6 +27,7 @@ class Broadcaster:
         self.group_id = group_id
         self.event_links = event_links
         self.broadcast_tag = broadcast_tag
+        self.reconnect_delay = reconnect_delay
 
     def start(self) -> None:
         """Запускает поток для прослушивания новых постов на стене группы и трансляции мероприятий"""
@@ -42,7 +43,7 @@ class Broadcaster:
                         self.broadcast(post_text)
             except Exception as e:
                 logger.error(f"Error in broadcaster: {e}")
-                time.sleep(reconnect_delay)
+                time.sleep(self.reconnect_delay)
 
     def broadcast(self, post_text: str) -> None:
         """Отправляет сообщение о новом мероприятии всем пользователям, у которых нет текущей заявки в процессе заполнения"""

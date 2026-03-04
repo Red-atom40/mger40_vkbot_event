@@ -8,5 +8,4 @@ dependencies = [
     "vk-api==11.10.0",
     "cryptography==46.0.5",
     "loguru==0.7.3",
-    "ruff==0.15.2",
 ]

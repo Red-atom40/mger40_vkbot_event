@@ -10,17 +10,14 @@ from database.database import Database
 from security.encryptor import Encryptor
 
 
-def setup_logger(level: str, log_format: str) -> None:
+def setup_logger(level: str) -> None:
     logger.remove()
-    if log_format == "json":
-        logger.add(sys.stdout, level=level, serialize=True)
-    else:
-        logger.add(sys.stdout, level=level)
+    logger.add(sys.stdout, level=level)
 
 
 def main() -> None:
     config = Config()
-    setup_logger(config.log_level, config.log_format)
+    setup_logger(config.log_level)
 
     logger.info("Configuration loaded successfully.")
 
@@ -29,7 +26,7 @@ def main() -> None:
     client = VkClient(config.vk_token)
 
     broadcaster = Broadcaster(
-        client, db, config.group_id, config.event_links, config.broadcast_tag
+        client, db, config.group_id, config.event_links, config.broadcast_tag, config.reconnect_delay
     )
     broadcaster.start()
 
