@@ -8,15 +8,14 @@ import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.longpoll import VkLongPoll, VkEventType, Event
 
-reconnect_delay = 5
-
 
 class VkClient:
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, reconnect_delay: int = 5) -> None:
         """Клиент для взаимодействия с VK API, обрабатывающий отправку сообщений и прослушивание событий"""
         self.session = vk_api.VkApi(token=token)
         self.api = self.session.get_api()
         self.longpoll = VkLongPoll(self.session)
+        self.reconnect_delay = reconnect_delay
 
     def send(self, user_id: int, msg: str) -> None:
         """Метод для отправки сообщения пользователю с указанным vk_id"""
@@ -41,7 +40,7 @@ class VkClient:
                 )
             except Exception as e:
                 logger.warning(f"LongPoll error: {e}. Reconnecting...")
-                time.sleep(reconnect_delay)
+                time.sleep(self.reconnect_delay)
 
     def listen_wall(self, group_id: int) -> Iterator[str]:
         """Генератор для прослушивания новых постов на стене группы, содержащих тег для трансляции мероприятий"""
