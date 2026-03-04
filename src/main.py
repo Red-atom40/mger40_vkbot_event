@@ -24,7 +24,7 @@ def main() -> None:
     client = VkClient(config.vk_token, config.reconnect_delay)
 
     broadcaster = Broadcaster(
-        client, db, config.group_id, config.event_links, config.broadcast_tag, config.reconnect_delay
+        client, db, config.group_id, config.broadcast_tag, config.reconnect_delay
     )
     broadcaster.start()
 

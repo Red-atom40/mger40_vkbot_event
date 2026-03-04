@@ -17,6 +17,5 @@ class Config:
         self.log_level: str = data.get("log_level", "INFO").upper()
         self.admin_ids: list[int] = [int(i) for i in data.get("admin_ids", [])]
         self.group_id: int = int(data.get("group_id", 0))
-        self.event_links: list[str] = data.get("event_links", [])
         self.broadcast_tag: str = data.get("broadcast_tag", "#мероприятие")
         self.reconnect_delay: int = int(data.get("reconnect_delay", 5))

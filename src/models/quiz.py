@@ -43,10 +43,12 @@ class Quiz:
 
 
 class Step(NamedTuple):
+    """Класс для хранения данных одного шага анкеты"""
     key: str
     question: str
 
 
+# Шаги анкеты с заранее заданными вопросами и ключами для хранения ответов в словаре
 STEPS: list[Step] = [
     Step("fio", "Введите ваше ФИО полностью (Фамилия Имя Отчество):"),
     Step("birth_date", "Дата рождения (ДД.ММ.ГГГГ):"),
@@ -70,6 +72,8 @@ START_COMMANDS = {"вступить", "заявка", "/start", "start"}
 
 
 class Session:
+    """Класс сессии прохождения анкеты пользователем"""
+
     def __init__(self, vk_id: int, timeout: int) -> None:
         """Инициализатор сессии прохождения анкеты пользователемы"""
         self.vk_id = vk_id
@@ -99,3 +103,26 @@ class Stats:
     top_regions: list[tuple[str, int]]
     top_education: list[tuple[str, int]]
     party_members: dict[str, int]
+
+
+def format_stats(s: Stats) -> str:
+    """Форматирует статистику для отображения в админ-панели по команде /статистика"""
+    lines = [
+        "Статистика заявок",
+        f"Всего заявок: {s.total}",
+        f"Средний возраст: {s.average_age if s.average_age is not None else '—'}",
+        "",
+        "Топ городов:",
+    ]
+    for i, (city, cnt) in enumerate(s.top_cities, 1):
+        lines.append(f"  {i}. {city} — {cnt}")
+    lines += ["", "Топ регионов:"]
+    for i, (region, cnt) in enumerate(s.top_regions, 1):
+        lines.append(f"  {i}. {region} — {cnt}")
+    lines += ["", "Образование:"]
+    for i, (edu, cnt) in enumerate(s.top_education, 1):
+        lines.append(f"  {i}. {edu} — {cnt}")
+    lines += ["", "Членство в ЕР:"]
+    for answer, cnt in sorted(s.party_members.items()):
+        lines.append(f"  {answer}: {cnt}")
+    return "\n".join(lines)

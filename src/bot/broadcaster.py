@@ -8,16 +8,12 @@ from bot.vk_client import VkClient
 from database.database import Database
 
 
-
-
-
 class Broadcaster:
     def __init__(
         self,
         client: VkClient,
         db: Database,
         group_id: int,
-        event_links: list[str],
         broadcast_tag: str,
         reconnect_delay: int = 5,
     ):
@@ -25,13 +21,13 @@ class Broadcaster:
         self.client = client
         self.db = db
         self.group_id = group_id
-        self.event_links = event_links
         self.broadcast_tag = broadcast_tag
         self.reconnect_delay = reconnect_delay
 
     def start(self) -> None:
         """Запускает поток для прослушивания новых постов на стене группы и трансляции мероприятий"""
-        t = threading.Thread(target=self.run, daemon=True, name="BroadcasterThread")
+        t = threading.Thread(target=self.run, daemon=True,
+                             name="BroadcasterThread")
         t.start()
         logger.info("Broadcaster started.")
 
@@ -52,8 +48,9 @@ class Broadcaster:
             logger.warning("No users to broadcast to.")
             return
 
+        # Генерируем уникальный event_id для этого мероприятия на основе текущей даты и времени
         event_id = datetime.now().strftime("%Y%m%d%H%M%S")
-        links_block = "\n".join(self.event_links)
+        links_block = "\n".join(self.db.get_event_links())
         message = f"{post_text}\n\n{links_block}"
 
         logger.info(f"Broadcasting event {event_id} to {len(vk_ids)} users.")
