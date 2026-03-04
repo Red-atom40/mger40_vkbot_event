@@ -46,46 +46,6 @@ def validate_city(value: str) -> ValidationResult:
     return True, None
 
 
-def validate_street(value: str) -> ValidationResult:
-    if not value.strip():
-        return False, "Улица не может быть пустой."
-    return True, None
-
-
-def validate_house(value: str) -> ValidationResult:
-    if not value.strip():
-        return False, "Укажите номер дома."
-    return True, None
-
-
-def validate_passport_number(value: str) -> ValidationResult:
-    if not value.strip():
-        return False, "Номер паспорта не может быть пустым."
-    if not value.isdigit() or len(value) != 10:
-        return False, "Номер паспорта должен состоять из 10 цифр."
-    return True, None
-
-
-def validate_passport_issued_by(value: str) -> ValidationResult:
-    if not value.strip():
-        return False, "Укажите, кем выдан паспорт."
-    return True, None
-
-
-def validate_passport_issue_date(value: str) -> ValidationResult:
-    d = parse_date(value)
-    if d is None:
-        return False, "Неверный формат даты. Ожидается ДД.ММ.ГГГГ"
-
-    if d > date.today():
-        return False, "Дата выдачи паспорта не может быть в будущем"
-
-    if d < date(1997, 1, 1):
-        return False, "Введите корректную дату выдачи паспорта (не ранее 1997 года)."
-
-    return True, None
-
-
 def validate_phone(value: str) -> ValidationResult:
     if not value.strip():
         return False, "Номер телефона не может быть пустым."
@@ -129,11 +89,6 @@ VALIDATORS: dict[str, Callable[[str], ValidationResult]] = {
     "birth_date": validate_birth_date,
     "region": validate_region,
     "city": validate_city,
-    "street": validate_street,
-    "house": validate_house,
-    "passport_number": validate_passport_number,
-    "passport_issued_by": validate_passport_issued_by,
-    "passport_issue_date": validate_passport_issue_date,
     "phone": validate_phone,
     "contact_info": validate_contact_info,
     "education_level": validate_education_level,

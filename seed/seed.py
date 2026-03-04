@@ -7,7 +7,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from security.encryptor import Encryptor
 from config import Config
 
 FIRST_NAMES = [
@@ -200,39 +199,6 @@ CITIES = [
     "Оренбург",
 ]
 
-STREETS = [
-    "ул. Ленина",
-    "ул. Мира",
-    "пр. Победы",
-    "ул. Советская",
-    "ул. Гагарина",
-    "ул. Пушкина",
-    "ул. Кирова",
-    "пр. Октября",
-    "ул. Садовая",
-    "ул. Центральная",
-    "ул. Молодёжная",
-    "ул. Школьная",
-    "ул. Лесная",
-    "ул. Набережная",
-    "ул. Комсомольская",
-    "ул. Первомайская",
-    "ул. Лермонтова",
-    "ул. Чехова",
-    "ул. Вокзальная",
-    "ул. Солнечная",
-    "ул. Цветочная",
-    "ул. Заречная",
-    "ул. Лазурная",
-    "ул. Берёзовая",
-]
-
-PASSPORT_ISSUER_TEMPLATES = [
-    "УМВД России по г. {city}",
-    "Отдел МВД России по {city}",
-    "ОМВД России по {city}",
-]
-
 EDUCATION_LEVELS = [
     "школьное",
     "среднее специальное",
@@ -311,23 +277,6 @@ def generate_user(vk_id: int) -> dict:
 
     city = random.choice(CITIES)
     region = random.choice(REGIONS)
-    street = random.choice(STREETS)
-    house = (
-        f"{random.randint(1, 200)}"
-        + (f" корп. {random.randint(1, 5)}" if random.random() < 0.3 else "")
-        + (f" кв. {random.randint(1, 300)}" if random.random() < 0.7 else "")
-    )
-
-    passport_series = f"{random.randint(10, 99)}{random.randint(10, 99)}"
-    passport_number = f"{random.randint(100000, 999999)}"
-    passport_full = passport_series + passport_number
-
-    issuer_template = random.choice(PASSPORT_ISSUER_TEMPLATES)
-    passport_issued_by = issuer_template.format(city=city)
-
-    passport_issue_date = random_date(date(1997, 1, 1), date(2024, 12, 31))
-    while passport_issue_date < birth + timedelta(days=14 * 365):
-        passport_issue_date = random_date(date(1997, 1, 1), date(2024, 12, 31))
 
     phone = "7" + "".join(str(random.randint(0, 9)) for _ in range(10))
 
@@ -352,11 +301,6 @@ def generate_user(vk_id: int) -> dict:
         "birth_date": fmt_date(birth),
         "region": region,
         "city": city,
-        "street": street,
-        "house": house,
-        "passport_number": passport_full,
-        "passport_issued_by": passport_issued_by,
-        "passport_issue_date": fmt_date(passport_issue_date),
         "phone": phone,
         "contact_info": contact,
         "education_level": education,
@@ -369,7 +313,6 @@ def generate_user(vk_id: int) -> dict:
 
 def seed(config_path: str, count: int) -> None:
     config = Config(Path(config_path))
-    encryptor = Encryptor(config.key_path)
 
     conn = sqlite3.connect(config.db_path)
     conn.row_factory = sqlite3.Row
@@ -380,11 +323,6 @@ def seed(config_path: str, count: int) -> None:
             birth_date              TEXT NOT NULL,
             region                  TEXT NOT NULL,
             city                    TEXT NOT NULL,
-            street                  TEXT NOT NULL,
-            house                   TEXT NOT NULL,
-            passport_number         TEXT NOT NULL,
-            passport_issued_by      TEXT NOT NULL,
-            passport_issue_date     TEXT NOT NULL,
             phone                   TEXT NOT NULL,
             contact_info            TEXT NOT NULL,
             education_level         TEXT NOT NULL,
@@ -403,16 +341,14 @@ def seed(config_path: str, count: int) -> None:
         user = generate_user(vk_id)
         vk_id += 1
 
-        encrypted_passport = encryptor.encrypt(user["passport_number"])
         try:
             conn.execute(
                 """
                 INSERT INTO applications (
-                    vk_id, fio, birth_date, region, city, street, house,
-                    passport_number, passport_issued_by, passport_issue_date,
+                    vk_id, fio, birth_date, region, city,
                     phone, contact_info, education_level, is_member,
                     previous_organizations, study_or_work_place, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user["vk_id"],
@@ -420,11 +356,6 @@ def seed(config_path: str, count: int) -> None:
                     user["birth_date"],
                     user["region"],
                     user["city"],
-                    user["street"],
-                    user["house"],
-                    encrypted_passport,
-                    user["passport_issued_by"],
-                    user["passport_issue_date"],
                     user["phone"],
                     user["contact_info"],
                     user["education_level"],

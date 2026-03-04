@@ -15,11 +15,6 @@ class Quiz:
     birth_date: str
     region: str
     city: str
-    street: str
-    house: str
-    passport_number: str
-    passport_issued_by: str
-    passport_issue_date: str
     phone: str
     contact_info: str
     education_level: str
@@ -38,11 +33,6 @@ class Quiz:
             birth_date=answers["birth_date"],
             region=answers["region"],
             city=answers["city"],
-            street=answers["street"],
-            house=answers["house"],
-            passport_number=answers["passport_number"],
-            passport_issued_by=answers["passport_issued_by"],
-            passport_issue_date=answers["passport_issue_date"],
             phone=answers["phone"],
             contact_info=answers["contact_info"],
             education_level=answers["education_level"],
@@ -62,13 +52,6 @@ STEPS: list[Step] = [
     Step("birth_date", "Дата рождения (ДД.ММ.ГГГГ):"),
     Step("region", "Регион постоянной регистрации:"),
     Step("city", "Город / населённый пункт:"),
-    Step("street", "Улица:"),
-    Step("house", "Дом / корпус / квартира:"),
-    Step(
-        "passport_number", "Серия и номер паспорта (без пробелов, например 4519123456):"
-    ),
-    Step("passport_issued_by", "Кем выдан паспорт:"),
-    Step("passport_issue_date", "Дата выдачи паспорта (ДД.ММ.ГГГГ):"),
     Step("phone", "Контактный телефон (+7...):"),
     Step("contact_info", "Email / Telegram:"),
     Step(

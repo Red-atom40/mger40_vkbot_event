@@ -3,7 +3,6 @@ import sqlite3
 import threading
 
 from models.quiz import Quiz, Stats
-from security.encryptor import Encryptor
 
 
 create_application_table = """
@@ -13,11 +12,6 @@ CREATE TABLE IF NOT EXISTS applications (
     birth_date              TEXT NOT NULL,
     region                  TEXT NOT NULL,
     city                    TEXT NOT NULL,
-    street                  TEXT NOT NULL,
-    house                   TEXT NOT NULL,
-    passport_number         TEXT NOT NULL,
-    passport_issued_by      TEXT NOT NULL,
-    passport_issue_date     TEXT NOT NULL,
     phone                   TEXT NOT NULL,
     contact_info            TEXT NOT NULL,
     education_level         TEXT NOT NULL,
@@ -51,11 +45,9 @@ class Database:
     def __init__(
         self,
         db_path: str,
-        encryptor: Encryptor,
         superadmin_ids: list[int] | None = None,
     ) -> None:
         """Инициализатор класса Database для работы с базой данных SQLite\n"""
-        self.encryptor = encryptor
         self.superadmins: tuple[int, ...] = tuple(superadmin_ids or [])
         self.lock = threading.Lock()
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -85,17 +77,15 @@ class Database:
         return [row["vk_id"] for row in rows]
 
     def save_application(self, quiz: Quiz) -> None:
-        encrypted_passport = self.encryptor.encrypt(quiz.passport_number)
         with self.lock:
             self.conn.execute(
                 """
                 INSERT OR REPLACE INTO applications (
-                    vk_id, fio, birth_date, region, city, street, house,
-                    passport_number, passport_issued_by, passport_issue_date,
+                    vk_id, fio, birth_date, region, city,
                     phone, contact_info, education_level, is_member,
                     previous_organizations, study_or_work_place, created_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -104,11 +94,6 @@ class Database:
                     quiz.birth_date,
                     quiz.region,
                     quiz.city,
-                    quiz.street,
-                    quiz.house,
-                    encrypted_passport,
-                    quiz.passport_issued_by,
-                    quiz.passport_issue_date,
                     quiz.phone,
                     quiz.contact_info,
                     quiz.education_level,
