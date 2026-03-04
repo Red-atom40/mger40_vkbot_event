@@ -7,4 +7,4 @@ seed:
 	uv run python seed/seed.py
 
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
+	uv run python -c "import shutil, pathlib; [shutil.rmtree(p) for p in pathlib.Path('.').rglob('__pycache__') if p.is_dir()]"
