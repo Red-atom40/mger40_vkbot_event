@@ -1,3 +1,4 @@
+import re
 import sqlite3
 
 from loguru import logger
@@ -8,6 +9,15 @@ from config import Config
 from models.quiz import START_COMMANDS, STEPS, Quiz, Session, Stats, format_stats
 from validation.validator import validate
 from validation.admin_validator import parse_vk_id, parse_link_index
+
+
+_VK_MENTION_RE = re.compile(r"\[(?:id|club)\d+\|([^\]]+)\]")
+
+
+# Нужно для удаления упоминаний в виде [id123|@username] из текста сообщений
+def strip_vk_mentions(text: str) -> str:
+    """Заменяет VK-теги упоминаний ([id123|@username]) на их отображаемый текст."""
+    return _VK_MENTION_RE.sub(r"\1", text)
 
 
 class VKBot:
@@ -33,7 +43,7 @@ class VKBot:
     def handle_message(self, event) -> None:
         """Обрабатывает входящее сообщение от пользователя"""
         user_id: int = event.user_id
-        text = event.text.strip()
+        text = strip_vk_mentions(event.text).strip()
 
         logger.debug(f"received message from {user_id}: {text!r}")
 

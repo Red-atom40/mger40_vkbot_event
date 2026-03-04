@@ -3,7 +3,6 @@
   "group_id": 236058783,
   "admin_ids": [458508216],
   "db_path": "quiz.db",
-  "key_path": "secret.key",
   "broadcast_tag": "#мероприятие",
   "session_timeout": 600,
   "reconnect_delay": 5,

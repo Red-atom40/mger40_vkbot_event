@@ -54,7 +54,7 @@ STEPS: list[Step] = [
     Step("birth_date", "Дата рождения (ДД.ММ.ГГГГ):"),
     Step("region", "Регион постоянной регистрации:"),
     Step("city", "Город / населённый пункт:"),
-    Step("phone", "Контактный телефон (+7...):"),
+    Step("phone", "Контактный телефон (7...):"),
     Step("contact_info", "Email / Telegram:"),
     Step(
         "education_level",
