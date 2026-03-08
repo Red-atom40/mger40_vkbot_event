@@ -50,6 +50,10 @@ class Broadcaster:
 
         # Генерируем уникальный event_id для этого мероприятия на основе текущей даты и времени
         event_id = datetime.now().strftime("%Y%m%d%H%M%S")
+        # Заголовок: первая строка поста или первые 80 символов
+        first_line = post_text.strip().splitlines()[0] if post_text.strip() else post_text
+        title = first_line[:80] + ("…" if len(first_line) > 80 else "")
+        self.db.save_event(event_id, title)
         links_block = "\n".join(self.db.get_event_links())
         message = f"{post_text}\n\n{links_block}"
 

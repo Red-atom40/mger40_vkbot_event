@@ -8,10 +8,21 @@ from database.database import Database
 from config import Config
 from models.quiz import START_COMMANDS, STEPS, Quiz, Session, Stats, format_stats
 from validation.validator import validate
-from validation.admin_validator import parse_vk_id, parse_link_index
+from validation.admin_validator import parse_vk_id, parse_link_index, parse_event_index
 
 
 _VK_MENTION_RE = re.compile(r"\[(?:id|club)\d+\|([^\]]+)\]")
+
+
+def format_event_id(event_id: str) -> str:
+    """Форматирует event_id (YYYYMMDDHHMMSS) в удобочитаемый вид ДД.ММ.ГГГГ ЧЧ:ММ"""
+    try:
+        return (
+            f"{event_id[6:8]}.{event_id[4:6]}.{event_id[:4]} "
+            f"{event_id[8:10]}:{event_id[10:12]}"
+        )
+    except IndexError:
+        return event_id
 
 
 # Нужно для удаления упоминаний в виде [id123|@username] из текста сообщений
@@ -152,6 +163,12 @@ class VKBot:
 
     # Admin Panel команды
 
+    def _send_long(self, user_id: int, text: str, chunk_size: int = 4000) -> None:
+        """Отправляет длинное сообщение, разбивая его на части по chunk_size символов"""
+        while text:
+            self.client.send(user_id, text[:chunk_size])
+            text = text[chunk_size:]
+
     def handle_admin(self, user_id: int, text: str) -> None:
         """Обрабатывает команды администратора, такие как просмотр статистики и управление администраторами и ссылками для рассылки"""
         parts = text.strip().split()
@@ -170,7 +187,9 @@ class VKBot:
                     "/админы — список всех администраторов\n"
                     "/ссылки_для_рассылок — список ссылок рассылки\n"
                     "/добавить_ссылку <текст> — добавить ссылку\n"
-                    "/удалить_ссылку <N> — удалить ссылку №N",
+                    "/удалить_ссылку <N> — удалить ссылку №N\n"
+                    "/мероприятия — список мероприятий и статистика ответов\n"
+                    "/участники <N> — список участников мероприятия №N с контактами",
                 )
             case "/статистика":
                 self.client.send(user_id, format_stats(
@@ -193,6 +212,10 @@ class VKBot:
                 self.cmd_add_link(user_id, args)
             case "/удалить_ссылку":
                 self.cmd_remove_link(user_id, args)
+            case "/мероприятия":
+                self.cmd_list_events(user_id)
+            case "/участники":
+                self.cmd_event_participants(user_id, args)
             case _:
                 self.client.send(
                     user_id,
@@ -270,3 +293,54 @@ class VKBot:
             return
         logger.info(f"Link {idx + 1} removed by vk_id={user_id}: {removed!r}")
         self.client.send(user_id, f"Ссылка №{idx + 1} удалена: {removed}")
+
+    # Работа с мероприятиями и участниками
+
+    def cmd_list_events(self, user_id: int) -> None:
+        """Отправляет администратору список мероприятий со статистикой ответов"""
+        events = self.db.get_events_list()
+        if not events:
+            self.client.send(user_id, "Мероприятия не найдены.")
+            return
+        lines = ["Мероприятия:"]
+        for i, e in enumerate(events, 1):
+            label = format_event_id(e["event_id"])
+            title = f" «{e['title']}»" if e["title"] else ""
+            lines.append(
+                f"  {i}. {label}{title}\n"
+                f"     приглашено: {e['total']}, "
+                f"придут: {e['yes_count']}, не придут: {e['no_count']}, ожидаем: {e['pending_count']}"
+            )
+        self.client.send(user_id, "\n".join(lines))
+
+    def cmd_event_participants(self, user_id: int, args: list[str]) -> None:
+        """Отправляет администратору список подтверждённых участников мероприятия с контактными данными"""
+        idx, err = parse_event_index(args)
+        if err:
+            self.client.send(user_id, f"{err} Пример: /участники 1")
+            return
+        events = self.db.get_events_list()
+        if idx >= len(events):
+            self.client.send(
+                user_id,
+                f"Мероприятие №{idx + 1} не найдено. Всего мероприятий: {len(events)}.",
+            )
+            return
+        event_id = events[idx]["event_id"]
+        participants = self.db.get_event_participants(event_id)
+        label = format_event_id(event_id)
+        if not participants:
+            self.client.send(
+                user_id,
+                f"Нет подтверждённых участников для мероприятия от {label}.",
+            )
+            return
+        lines = [f"Участники мероприятия от {label} (подтвердили: {len(participants)}):"]
+        for i, p in enumerate(participants, 1):
+            lines.append(
+                f"{i}. {p['fio']}\n"
+                f"   Тел: {p['phone']} | Email/TG: {p['contact_info']}\n"
+                f"   Город: {p['city']}, {p['region']} | VK ID: {p['vk_id']}"
+            )
+        logger.info(f"Participants list for event {event_id} sent to vk_id={user_id}")
+        self._send_long(user_id, "\n".join(lines))

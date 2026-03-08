@@ -16,3 +16,13 @@ def parse_link_index(args: list[str]) -> tuple[int, None] | tuple[None, str]:
         return int(args[0]) - 1, None
     except ValueError:
         return None, "Номер ссылки должен быть числом."
+
+
+def parse_event_index(args: list[str]) -> tuple[int, None] | tuple[None, str]:
+    """Парсит порядковый номер мероприятия (1-based) из аргументов команды"""
+    if not args:
+        return None, "Укажите номер мероприятия."
+    try:
+        return int(args[0]) - 1, None
+    except ValueError:
+        return None, "Номер мероприятия должен быть числом."

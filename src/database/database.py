@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS event_links (
 );
 """
 
+create_events_table = """
+CREATE TABLE IF NOT EXISTS events (
+    event_id    TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    created_at  REAL NOT NULL
+);
+"""
+
 
 class Database:
     def __init__(
@@ -70,6 +78,7 @@ class Database:
             self.conn.execute(create_admins_table)
             self.conn.execute(create_rsvp_table)
             self.conn.execute(create_event_links_table)
+            self.conn.execute(create_events_table)
             self.conn.commit()
 
     def has_application(self, vk_id: int) -> bool:
@@ -229,6 +238,15 @@ class Database:
         ).fetchall()
         return {row["is_member"]: row["cnt"] for row in rows}
 
+    def save_event(self, event_id: str, title: str) -> None:
+        """Сохраняет заголовок мероприятия при создании рассылки"""
+        with self.lock:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO events (event_id, title, created_at) VALUES (?, ?, ?)",
+                (event_id, title, datetime.now().timestamp()),
+            )
+            self.conn.commit()
+
     def add_pending_rsvp(self, vk_id: int, event_id: str) -> None:
         """Добавляет запись о том, что пользователю с vk_id была отправлена информация о мероприятии event_id и ожидается его ответ (да/нет)"""
         with self.lock:
@@ -285,3 +303,44 @@ class Database:
                 "DELETE FROM event_links WHERE id = ?", (row["id"],))
             self.conn.commit()
         return removed
+
+    def get_events_list(self) -> list[dict]:
+        """Возвращает список всех мероприятий со статистикой ответов и заголовком"""
+        with self.lock:
+            rows = self.conn.execute(
+                """
+                SELECT
+                    r.event_id,
+                    COALESCE(e.title, '') AS title,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN r.answer = 'да' THEN 1 ELSE 0 END) AS yes_count,
+                    SUM(CASE WHEN r.answer = 'нет' THEN 1 ELSE 0 END) AS no_count,
+                    SUM(CASE WHEN r.answer IS NULL THEN 1 ELSE 0 END) AS pending_count
+                FROM rsvp r
+                LEFT JOIN events e ON r.event_id = e.event_id
+                GROUP BY r.event_id
+                ORDER BY r.event_id DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_event_participants(self, event_id: str) -> list[dict]:
+        """Возвращает контактные данные участников мероприятия, ответивших 'да'"""
+        with self.lock:
+            rows = self.conn.execute(
+                """
+                SELECT
+                    r.vk_id,
+                    a.fio,
+                    a.phone,
+                    a.contact_info,
+                    a.city,
+                    a.region
+                FROM rsvp r
+                JOIN applications a ON r.vk_id = a.vk_id
+                WHERE r.event_id = ? AND r.answer = 'да'
+                ORDER BY a.fio
+                """,
+                (event_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
