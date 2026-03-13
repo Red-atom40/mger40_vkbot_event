@@ -1,10 +1,14 @@
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 
-def start_keyboard() -> str:
-    """Возвращает JSON клавиатуры с кнопкой «Заявка» для приветственного сообщения."""
-    kb = VkKeyboard(one_time=True)
-    kb.add_button("Заявка", color=VkKeyboardColor.PRIMARY)
+def start_keyboard(has_application: bool = False) -> str:
+    """Возвращает основную клавиатуру: «Заявка» до анкеты, «Мои данные» после неё."""
+    kb = VkKeyboard(one_time=False)
+    if has_application:
+        kb.add_button("Мои данные", color=VkKeyboardColor.SECONDARY)
+        kb.add_button("Изменить данные", color=VkKeyboardColor.PRIMARY)
+    else:
+        kb.add_button("Заявка", color=VkKeyboardColor.PRIMARY)
     return kb.get_keyboard()
 
 
@@ -31,4 +35,37 @@ def education_keyboard() -> str:
     kb.add_button("высшее", color=VkKeyboardColor.PRIMARY)
     kb.add_line()
     kb.add_button("иное", color=VkKeyboardColor.SECONDARY)
+    return kb.get_keyboard()
+
+
+def profile_actions_keyboard() -> str:
+    """Возвращает клавиатуру действий с пользовательскими данными."""
+    kb = VkKeyboard(one_time=True)
+    kb.add_button("Изменить данные", color=VkKeyboardColor.PRIMARY)
+    return kb.get_keyboard()
+
+
+def profile_fields_keyboard() -> str:
+    """Возвращает клавиатуру выбора поля для редактирования."""
+    kb = VkKeyboard(one_time=True)
+    kb.add_button("ФИО", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Дата рождения", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Регион", color=VkKeyboardColor.SECONDARY)
+    kb.add_button("Город", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Телефон", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Email/Telegram", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Образование", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Членство в ЕР", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Предыдущие организации", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Учеба/работа", color=VkKeyboardColor.SECONDARY)
+    kb.add_line()
+    kb.add_button("Отмена", color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()

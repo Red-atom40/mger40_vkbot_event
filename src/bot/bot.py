@@ -3,7 +3,13 @@ import sqlite3
 
 from loguru import logger
 
-from bot.keyboards import education_keyboard, empty_keyboard, start_keyboard, yes_no_keyboard
+from bot.keyboards import (
+    education_keyboard,
+    empty_keyboard,
+    profile_fields_keyboard,
+    start_keyboard,
+    yes_no_keyboard,
+)
 from bot.vk_client import VkClient
 from database.database import Database
 from config import Config
@@ -14,6 +20,57 @@ from validation.admin_validator import parse_vk_id, parse_link_index, parse_even
 
 _VK_MENTION_RE = re.compile(r"\[(?:id|club)\d+\|([^\]]+)\]")
 USER_HELP_COMMANDS = {"/помощь", "/help", "помощь", "help"}
+USER_STOP_COMMANDS = {"/стоп", "/stop", "стоп", "stop"}
+USER_PROFILE_COMMANDS = {"мои данные", "/мои_данные", "/profile"}
+USER_EDIT_PROFILE_COMMANDS = {
+    "изменить данные",
+    "редактировать данные",
+    "настроить данные",
+}
+USER_CANCEL_COMMANDS = {"отмена", "/отмена", "cancel", "/cancel"}
+
+PROFILE_FIELD_BY_LABEL: dict[str, str] = {
+    "фио": "fio",
+    "дата рождения": "birth_date",
+    "регион": "region",
+    "город": "city",
+    "телефон": "phone",
+    "email/telegram": "contact_info",
+    "образование": "education_level",
+    "членство в ер": "is_member",
+    "предыдущие организации": "previous_organizations",
+    "учеба/работа": "study_or_work_place",
+}
+
+PROFILE_FIELD_TITLE: dict[str, str] = {
+    "fio": "ФИО",
+    "birth_date": "Дата рождения",
+    "region": "Регион",
+    "city": "Город",
+    "phone": "Телефон",
+    "contact_info": "Email/Telegram",
+    "education_level": "Образование",
+    "is_member": "Членство в ЕР",
+    "previous_organizations": "Предыдущие организации",
+    "study_or_work_place": "Учеба/работа",
+}
+
+PROFILE_FIELD_ORDER: tuple[str, ...] = (
+    "fio",
+    "birth_date",
+    "region",
+    "city",
+    "phone",
+    "contact_info",
+    "education_level",
+    "is_member",
+    "previous_organizations",
+    "study_or_work_place",
+)
+
+STEP_QUESTION_BY_KEY: dict[str, str] = {
+    step.key: step.question for step in STEPS
+}
 
 
 def format_event_id(event_id: str) -> str:
@@ -40,6 +97,11 @@ class VKBot:
         self.db = db
         self.client = client
         self.session: dict[int, Session] = {}
+        self.profile_edit_field: dict[int, str] = {}
+
+    def main_keyboard(self, user_id: int) -> str:
+        """Возвращает основную клавиатуру в зависимости от статуса анкеты."""
+        return start_keyboard(self.db.has_application(user_id))
 
     def run(self) -> None:
         """Запускает основной цикл бота для прослушивания входящих сообщений"""
@@ -57,8 +119,29 @@ class VKBot:
         """Обрабатывает входящее сообщение от пользователя"""
         user_id: int = event.user_id
         text = strip_vk_mentions(event.text).strip()
+        lower_text = text.lower()
 
         logger.debug(f"received message from {user_id}: {text!r}")
+
+        if lower_text in START_COMMANDS:
+            self.start_quiz(user_id)
+            return
+
+        if lower_text in USER_HELP_COMMANDS:
+            self.send_user_help(user_id)
+            return
+
+        if lower_text in USER_STOP_COMMANDS:
+            self.cancel_quiz(user_id)
+            return
+
+        if lower_text in USER_PROFILE_COMMANDS:
+            self.send_profile(user_id)
+            return
+
+        if lower_text in USER_EDIT_PROFILE_COMMANDS:
+            self.start_profile_edit(user_id)
+            return
 
         if self.db.is_admin(user_id) and text.startswith("/"):
             self.handle_admin(user_id, text)
@@ -69,12 +152,21 @@ class VKBot:
             self.handle_rsvp(user_id, event_id, text)
             return
 
-        if text.lower() in START_COMMANDS:
-            self.start_quiz(user_id)
+        if user_id in self.profile_edit_field:
+            if lower_text in USER_CANCEL_COMMANDS:
+                del self.profile_edit_field[user_id]
+                self.client.send(
+                    user_id,
+                    "Редактирование отменено.",
+                    keyboard=self.main_keyboard(user_id),
+                )
+                return
+            self.process_profile_edit_value(user_id, text)
             return
 
-        if text.lower() in USER_HELP_COMMANDS:
-            self.send_user_help(user_id)
+        selected_field = PROFILE_FIELD_BY_LABEL.get(text.casefold())
+        if selected_field is not None:
+            self.start_field_edit(user_id, selected_field)
             return
 
         session = self.session.get(user_id)
@@ -101,12 +193,15 @@ class VKBot:
 
     def start_quiz(self, user_id: int) -> None:
         """Начинает новый сеанс заполнения заявки для пользователя"""
+        self.profile_edit_field.pop(user_id, None)
+
         if self.db.has_application(user_id):
             logger.warning(f"Duplicate application attempt vk_id={user_id}")
 
             self.client.send(
                 user_id,
-                "Ваша заявка уже принята. Спасибо за интерес к «Молодой Гвардии»!",
+                "Ваша заявка уже принята. Если нужно изменить данные, нажмите «Мои данные».",
+                keyboard=self.main_keyboard(user_id),
             )
             return
 
@@ -117,8 +212,27 @@ class VKBot:
             user_id,
             "Добро пожаловать! Вы начинаете заполнение заявки на вступление в «Молодую Гвардию».\n"
             f"На ответы отводится {self.config.session_timeout // 60} минут. "
-            "Если время выйдет — нужно начать заново.\n\n" + STEPS[0].question,
+            "Если время выйдет — нужно начать заново.\n"
+            "Для досрочного завершения введите /стоп.\n\n" + STEPS[0].question,
             keyboard=empty_keyboard(),
+        )
+
+    def cancel_quiz(self, user_id: int) -> None:
+        """Прерывает текущую анкету пользователя по его команде."""
+        session = self.session.pop(user_id, None)
+        if session is None:
+            self.client.send(
+                user_id,
+                "Активной анкеты нет.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        logger.info(f"Quiz canceled vk_id={user_id}")
+        self.client.send(
+            user_id,
+            "Анкета остановлена. Чтобы начать заново, нажмите «Заявка» или введите /start.",
+            keyboard=self.main_keyboard(user_id),
         )
 
     def send_user_help(self, user_id: int) -> None:
@@ -128,18 +242,226 @@ class VKBot:
             "Команды пользователя:\n"
             "/start — начать заполнение анкеты\n"
             "/заявка — начать заполнение анкеты\n"
+            "/стоп — прервать текущую анкету\n"
+            "Мои данные — посмотреть сохранённые данные\n"
             "/помощь — подсказка по командам\n\n"
-            "Также можно нажать кнопку «Заявка» ниже.",
-            keyboard=start_keyboard(),
+            "Также можно пользоваться кнопками ниже.",
+            keyboard=self.main_keyboard(user_id),
         )
 
     def send_welcome(self, user_id: int) -> None:
         """Отправляет приветствие с кнопкой старта анкеты."""
+        if self.db.has_application(user_id):
+            self.client.send(
+                user_id,
+                "Привет! Ваша анкета уже сохранена.\n"
+                "Нажмите «Мои данные», чтобы посмотреть или изменить информацию.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
         self.client.send(
             user_id,
             "Привет! Добро пожаловать в «Молодую Гвардию».\n"
-            "Чтобы подать заявку, нажмите кнопку «Заявка» или напишите /start.",
-            keyboard=start_keyboard(),
+            "Чтобы подать заявку, нажмите кнопку «Заявка» или напишите /start.\n"
+            "Чтобы прервать анкету в любой момент, введите /стоп.",
+            keyboard=self.main_keyboard(user_id),
+        )
+
+    def _format_application(self, app: dict) -> str:
+        """Форматирует анкету пользователя в многострочный текст."""
+        lines = ["Ваши данные:"]
+        for field in PROFILE_FIELD_ORDER:
+            title = PROFILE_FIELD_TITLE[field]
+            lines.append(f"{title}: {app.get(field, '')}")
+        return "\n".join(lines)
+
+    def send_profile(self, user_id: int) -> None:
+        """Отправляет пользователю сохраненные данные анкеты."""
+        app = self.db.get_application(user_id)
+        if app is None:
+            self.client.send(
+                user_id,
+                "У вас пока нет сохранённой анкеты. Нажмите «Заявка», чтобы заполнить её.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        self.client.send(
+            user_id,
+            self._format_application(app),
+            keyboard=self.main_keyboard(user_id),
+        )
+
+    def start_profile_edit(self, user_id: int) -> None:
+        """Запускает режим выбора поля для редактирования анкеты."""
+        if user_id in self.session:
+            self.client.send(
+                user_id,
+                "Сейчас вы заполняете анкету. Введите /стоп, чтобы прервать её и перейти к редактированию данных.",
+                keyboard=empty_keyboard(),
+            )
+            return
+
+        if self.db.get_application(user_id) is None:
+            self.client.send(
+                user_id,
+                "У вас пока нет сохранённой анкеты. Нажмите «Заявка», чтобы заполнить её.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        self.client.send(
+            user_id,
+            "Выберите поле, которое хотите изменить.",
+            keyboard=profile_fields_keyboard(),
+        )
+
+    def start_field_edit(self, user_id: int, field_key: str) -> None:
+        """Переходит к вводу нового значения выбранного поля анкеты."""
+        if user_id in self.session:
+            self.client.send(
+                user_id,
+                "Сейчас вы заполняете анкету. Введите /стоп, чтобы прервать её и перейти к редактированию данных.",
+                keyboard=empty_keyboard(),
+            )
+            return
+
+        if self.db.get_application(user_id) is None:
+            self.client.send(
+                user_id,
+                "У вас пока нет сохранённой анкеты. Нажмите «Заявка», чтобы заполнить её.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        self.profile_edit_field[user_id] = field_key
+        question = STEP_QUESTION_BY_KEY.get(field_key, "Введите новое значение:")
+        if field_key == "education_level":
+            question += "\nЕсли выберете «иное», следующим сообщением укажите какое именно."
+
+        self.client.send(
+            user_id,
+            question,
+            keyboard=self.keyboard_for_step(field_key),
+        )
+
+    def process_profile_edit_value(self, user_id: int, text: str) -> None:
+        """Валидирует и сохраняет новое значение выбранного поля анкеты."""
+        field_key = self.profile_edit_field.get(user_id)
+        if field_key is None:
+            return
+
+        app = self.db.get_application(user_id)
+        if app is None:
+            del self.profile_edit_field[user_id]
+            self.client.send(
+                user_id,
+                "Анкета не найдена. Нажмите «Заявка», чтобы заполнить её заново.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        answers = {k: str(v) for k, v in app.items()}
+
+        if field_key == "education_level":
+            ok, error_msg = validate("education_level", text, answers)
+            if not ok:
+                self.client.send(
+                    user_id,
+                    f"{error_msg}\n\n{STEP_QUESTION_BY_KEY['education_level']}",
+                    keyboard=education_keyboard(),
+                )
+                return
+
+            canonical_education = canonicalize_education_level(text)
+            if canonical_education is None:
+                self.client.send(
+                    user_id,
+                    "Выберите образование кнопкой из предложенных вариантов.",
+                    keyboard=education_keyboard(),
+                )
+                return
+
+            if canonical_education == "иное":
+                self.profile_edit_field[user_id] = "education_other"
+                self.client.send(
+                    user_id,
+                    "Укажите, пожалуйста, какое у вас образование:",
+                    keyboard=empty_keyboard(),
+                )
+                return
+
+            self.db.update_application_field(user_id, "education_level", canonical_education)
+            del self.profile_edit_field[user_id]
+            self.client.send(
+                user_id,
+                f"Поле «{PROFILE_FIELD_TITLE['education_level']}» обновлено.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        if field_key == "education_other":
+            ok, error_msg = validate("education_other", text, answers)
+            if not ok:
+                self.client.send(
+                    user_id,
+                    f"{error_msg}\n\nУкажите, пожалуйста, какое у вас образование:",
+                    keyboard=empty_keyboard(),
+                )
+                return
+
+            self.db.update_application_field(user_id, "education_level", f"иное: {text.strip()}")
+            del self.profile_edit_field[user_id]
+            self.client.send(
+                user_id,
+                f"Поле «{PROFILE_FIELD_TITLE['education_level']}» обновлено.",
+                keyboard=self.main_keyboard(user_id),
+            )
+            return
+
+        new_value = text.strip()
+        ok, error_msg = validate(field_key, new_value, answers)
+        if not ok:
+            question = STEP_QUESTION_BY_KEY.get(field_key, "Введите новое значение:")
+            self.client.send(
+                user_id,
+                f"{error_msg}\n\n{question}",
+                keyboard=self.keyboard_for_step(field_key),
+            )
+            return
+
+        if field_key == "region":
+            current_city = str(app.get("city", "")).strip()
+            if current_city:
+                city_ok, city_error = validate("city", current_city, {"region": new_value})
+                if not city_ok:
+                    self.client.send(
+                        user_id,
+                        "Нельзя обновить регион без города. Текущий город не относится к выбранному региону. "
+                        "Сначала измените город, затем регион.",
+                        keyboard=profile_fields_keyboard(),
+                    )
+                    return
+
+        if field_key == "city":
+            region = str(app.get("region", "")).strip()
+            ok, error_msg = validate("city", new_value, {"region": region})
+            if not ok:
+                question = STEP_QUESTION_BY_KEY.get("city", "Введите новое значение:")
+                self.client.send(
+                    user_id,
+                    f"{error_msg}\n\n{question}",
+                    keyboard=self.keyboard_for_step("city"),
+                )
+                return
+
+        self.db.update_application_field(user_id, field_key, new_value)
+        del self.profile_edit_field[user_id]
+        self.client.send(
+            user_id,
+            f"Поле «{PROFILE_FIELD_TITLE[field_key]}» обновлено.",
+            keyboard=self.main_keyboard(user_id),
         )
 
     def keyboard_for_step(self, step_key: str) -> str | None:
@@ -229,7 +551,7 @@ class VKBot:
         self.client.send(
             user_id,
             "Ваша заявка успешно принята!\nМы рассмотрим её в ближайшее время и свяжемся с вами.",
-            keyboard=empty_keyboard(),
+            keyboard=self.main_keyboard(user_id),
         )
 
     # Admin Panel команды

@@ -55,6 +55,19 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
+_EDITABLE_APPLICATION_FIELDS: tuple[str, ...] = (
+    "fio",
+    "birth_date",
+    "region",
+    "city",
+    "phone",
+    "contact_info",
+    "education_level",
+    "is_member",
+    "previous_organizations",
+    "study_or_work_place",
+)
+
 
 class Database:
     def __init__(
@@ -87,6 +100,14 @@ class Database:
                 "SELECT 1 FROM applications WHERE vk_id = ?", (vk_id,)
             ).fetchone()
         return row is not None
+
+    def get_application(self, vk_id: int) -> dict | None:
+        """Возвращает анкету пользователя как dict или None, если заявки нет."""
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT * FROM applications WHERE vk_id = ?", (vk_id,)
+            ).fetchone()
+        return dict(row) if row is not None else None
 
     def get_all_vk_ids(self) -> list[int]:
         with self.lock:
@@ -122,6 +143,19 @@ class Database:
                 ),
             )
             self.conn.commit()
+
+    def update_application_field(self, vk_id: int, field: str, value: str) -> bool:
+        """Обновляет одно поле анкеты пользователя. Возвращает True, если запись обновлена."""
+        if field not in _EDITABLE_APPLICATION_FIELDS:
+            raise ValueError(f"Недопустимое поле для обновления: {field}")
+
+        with self.lock:
+            cur = self.conn.execute(
+                f"UPDATE applications SET {field} = ? WHERE vk_id = ?",
+                (value, vk_id),
+            )
+            self.conn.commit()
+        return cur.rowcount > 0
 
     def is_admin(self, vk_id: int) -> bool:
         if vk_id in self.superadmins:
