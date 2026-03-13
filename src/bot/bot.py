@@ -3,15 +3,17 @@ import sqlite3
 
 from loguru import logger
 
+from bot.keyboards import education_keyboard, empty_keyboard, start_keyboard, yes_no_keyboard
 from bot.vk_client import VkClient
 from database.database import Database
 from config import Config
-from models.quiz import START_COMMANDS, STEPS, Quiz, Session, Stats, format_stats
-from validation.validator import validate
+from models.quiz import START_COMMANDS, STEPS, Quiz, Session, format_stats
+from validation.validator import canonicalize_education_level, validate
 from validation.admin_validator import parse_vk_id, parse_link_index, parse_event_index
 
 
 _VK_MENTION_RE = re.compile(r"\[(?:id|club)\d+\|([^\]]+)\]")
+USER_HELP_COMMANDS = {"/помощь", "/help", "помощь", "help"}
 
 
 def format_event_id(event_id: str) -> str:
@@ -71,16 +73,17 @@ class VKBot:
             self.start_quiz(user_id)
             return
 
+        if text.lower() in USER_HELP_COMMANDS:
+            self.send_user_help(user_id)
+            return
+
         session = self.session.get(user_id)
         if session is not None and session.is_expired():
             del self.session[user_id]
             session = None
 
         if session is None:
-            self.client.send(
-                user_id,
-                "Привет! Чтобы начать заполнение анкеты, напиши «вступить» или «заявка».",
-            )
+            self.send_welcome(user_id)
             return
 
         self.process_answer(user_id, session, text)
@@ -88,7 +91,7 @@ class VKBot:
     def handle_rsvp(self, user_id: int, event_id: str, text: str) -> None:
         answer = text.lower().strip()
         if answer not in ("да", "нет"):
-            self.client.send(user_id, "Пожалуйста, ответьте «да» или «нет».")
+            self.client.send(user_id, "Пожалуйста, ответьте «да» или «нет».", keyboard=yes_no_keyboard())
             return
         self.db.save_rsvp_answer(user_id, event_id, answer)
 
@@ -115,7 +118,37 @@ class VKBot:
             "Добро пожаловать! Вы начинаете заполнение заявки на вступление в «Молодую Гвардию».\n"
             f"На ответы отводится {self.config.session_timeout // 60} минут. "
             "Если время выйдет — нужно начать заново.\n\n" + STEPS[0].question,
+            keyboard=empty_keyboard(),
         )
+
+    def send_user_help(self, user_id: int) -> None:
+        """Отправляет список пользовательских команд и кнопку старта анкеты."""
+        self.client.send(
+            user_id,
+            "Команды пользователя:\n"
+            "/start — начать заполнение анкеты\n"
+            "/заявка — начать заполнение анкеты\n"
+            "/помощь — подсказка по командам\n\n"
+            "Также можно нажать кнопку «Заявка» ниже.",
+            keyboard=start_keyboard(),
+        )
+
+    def send_welcome(self, user_id: int) -> None:
+        """Отправляет приветствие с кнопкой старта анкеты."""
+        self.client.send(
+            user_id,
+            "Привет! Добро пожаловать в «Молодую Гвардию».\n"
+            "Чтобы подать заявку, нажмите кнопку «Заявка» или напишите /start.",
+            keyboard=start_keyboard(),
+        )
+
+    def keyboard_for_step(self, step_key: str) -> str | None:
+        """Возвращает клавиатуру для конкретного шага анкеты."""
+        if step_key == "education_level":
+            return education_keyboard()
+        if step_key == "is_member":
+            return yes_no_keyboard()
+        return None
 
     def process_answer(self, user_id: int, session: Session, text: str) -> None:
         """Обрабатывает ответ пользователя на текущий вопрос анкеты, сохраняет его и переходит к следующему вопросу или завершает анкету"""
@@ -124,8 +157,22 @@ class VKBot:
 
         if not ok:
             self.client.send(
-                user_id, f"{error_msg}\n\n{current_step.question}")
+                user_id,
+                f"{error_msg}\n\n{current_step.question}",
+                keyboard=self.keyboard_for_step(current_step.key),
+            )
             return
+
+        if current_step.key == "education_level":
+            canonical_education = canonicalize_education_level(text)
+            if canonical_education is None:
+                self.client.send(
+                    user_id,
+                    "Выберите образование кнопкой из предложенных вариантов.",
+                    keyboard=education_keyboard(),
+                )
+                return
+            text = canonical_education
 
         logger.debug(
             f"Answer saved vk_id={user_id} step={session.step_index} key={current_step.key}"
@@ -137,7 +184,12 @@ class VKBot:
         if session.step_index >= len(STEPS):
             self.finalize_quiz(user_id, session)
         else:
-            self.client.send(user_id, STEPS[session.step_index].question)
+            next_step = STEPS[session.step_index]
+            self.client.send(
+                user_id,
+                next_step.question,
+                keyboard=self.keyboard_for_step(next_step.key),
+            )
 
     def finalize_quiz(self, user_id: int, session: Session) -> None:
         """Завершает анкету, сохраняет её в базе данных и отправляет пользователю сообщение о принятии заявки"""
@@ -159,6 +211,7 @@ class VKBot:
         self.client.send(
             user_id,
             "Ваша заявка успешно принята!\nМы рассмотрим её в ближайшее время и свяжемся с вами.",
+            keyboard=empty_keyboard(),
         )
 
     # Admin Panel команды

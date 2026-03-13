@@ -169,7 +169,6 @@ class Database:
             total = self.stat_total()
             average_age = self.stat_average_age()
             top_cities = self.stat_top("city", top_n)
-            top_regions = self.stat_top("region", top_n)
             top_education = self.stat_top("education_level", top_n)
             party_members = self.stat_party_members()
 
@@ -177,7 +176,6 @@ class Database:
             total=total,
             average_age=average_age,
             top_cities=top_cities,
-            top_regions=top_regions,
             top_education=top_education,
             party_members=party_members,
         )
@@ -214,7 +212,7 @@ class Database:
         return round(sum(ages) / len(ages), 1) if ages else None
 
     def stat_top(self, column: str, n: int) -> list[tuple[str, int]]:
-        """Возвращает топ-n значений для указанной колонки (например, городов или регионов)"""
+        """Возвращает топ-n значений для указанной колонки."""
         rows = self.conn.execute(
             f"""
             SELECT {column}, COUNT(*) AS cnt

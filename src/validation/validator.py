@@ -1,8 +1,17 @@
 from collections.abc import Callable
 from datetime import date, datetime
+from validation.russian_cities import is_russian_city, suggest_cities
 
 ValidationResult = tuple[bool, str | None]
-
+EDUCATION_LEVEL_OPTIONS: tuple[str, ...] = (
+    "среднее общее",
+    "среднее специальное",
+    "высшее",
+    "иное",
+)
+_EDUCATION_LEVEL_MAP: dict[str, str] = {
+    option.casefold(): option for option in EDUCATION_LEVEL_OPTIONS
+}
 
 def parse_date(value: str) -> date | None:
     try:
@@ -41,9 +50,24 @@ def validate_region(value: str) -> ValidationResult:
 
 
 def validate_city(value: str) -> ValidationResult:
-    if not value.strip():
+    city = value.strip()
+    if not city:
         return False, "Город не может быть пустым."
-    return True, None
+    if is_russian_city(city):
+        return True, None
+    hints = suggest_cities(city)
+    if hints:
+        options = ", ".join(hints)
+        return False, (
+            f"Город «{city}» не найден.\n"
+            f"Возможно, вы имели в виду: {options}?\n"
+            "Введите официальное название города РФ на русском языке."
+        )
+    return (
+        False,
+        f"Город «{city}» не найден среди городов РФ.\n"
+        "Введите официальное название города на русском языке (например: Москва, Казань, Тула).",
+    )
 
 
 def validate_phone(value: str) -> ValidationResult:
@@ -61,9 +85,17 @@ def validate_contact_info(value: str) -> ValidationResult:
 
 
 def validate_education_level(value: str) -> ValidationResult:
-    if not value.strip():
-        return False, "Укажите уровень образования."
+    if value.strip().casefold() not in _EDUCATION_LEVEL_MAP:
+        return (
+            False,
+            "Выберите один из вариантов: среднее общее / среднее специальное / высшее / иное.",
+        )
     return True, None
+
+
+def canonicalize_education_level(value: str) -> str | None:
+    """Возвращает каноничное значение уровня образования."""
+    return _EDUCATION_LEVEL_MAP.get(value.strip().casefold())
 
 
 def validate_is_member(value: str) -> ValidationResult:

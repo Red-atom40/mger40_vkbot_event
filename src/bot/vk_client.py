@@ -5,7 +5,7 @@ from random import getrandbits
 from loguru import logger
 
 import vk_api
-from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEvent
 from vk_api.longpoll import VkLongPoll, VkEventType, Event
 
 
@@ -17,15 +17,18 @@ class VkClient:
         self.longpoll = VkLongPoll(self.session)
         self.reconnect_delay = reconnect_delay
 
-    def send(self, user_id: int, msg: str) -> None:
-        """Метод для отправки сообщения пользователю с указанным vk_id"""
+    def send(self, user_id: int, msg: str, keyboard: str | None = None) -> None:
+        """Отправляет сообщение пользователю. Опционально прикрепляет клавиатуру (JSON-строка)."""
         logger.debug(f"Sending message to {user_id}: {msg!r}")
         try:
-            self.api.messages.send(
+            kwargs: dict = dict(
                 user_id=user_id,
                 message=msg,
                 random_id=getrandbits(31),
             )
+            if keyboard is not None:
+                kwargs["keyboard"] = keyboard
+            self.api.messages.send(**kwargs)
         except vk_api.exceptions.ApiError as e:
             logger.error(f"Failed to send message to {user_id}: {e}")
 
@@ -42,11 +45,7 @@ class VkClient:
                 logger.warning(f"LongPoll error: {e}. Reconnecting...")
                 time.sleep(self.reconnect_delay)
 
-    def listen_wall(self, group_id: int) -> Iterator[str]:
-        """Генератор для прослушивания новых постов на стене группы, содержащих тег для трансляции мероприятий"""
+    def listen_bot_events(self, group_id: int) -> Iterator[VkBotEvent]:
+        """Генератор для прослушивания всех событий группы (посты на стене, вступления и т.д.)"""
         bot_longpoll = VkBotLongPoll(self.session, group_id)
-        yield from (
-            e.object.get("text", "")
-            for e in bot_longpoll.listen()
-            if e.type == VkBotEventType.WALL_POST_NEW
-        )
+        yield from bot_longpoll.listen()

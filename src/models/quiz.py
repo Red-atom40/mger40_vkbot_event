@@ -58,7 +58,11 @@ STEPS: list[Step] = [
     Step("contact_info", "Email / Telegram:"),
     Step(
         "education_level",
-        "Образование:\n  школьное / среднее специальное / высшее / иное",
+        "Образование — выберите один из вариантов:\n"
+        "  среднее общее\n"
+        "  среднее специальное\n"
+        "  высшее\n"
+        "  иное",
     ),
     Step("is_member", "Являетесь ли вы членом партии «Единая Россия»? (да / нет):"),
     Step(
@@ -68,7 +72,7 @@ STEPS: list[Step] = [
     Step("study_or_work_place", "Место учёбы / работы (название и город):"),
 ]
 
-START_COMMANDS = {"вступить", "заявка", "/start", "start"}
+START_COMMANDS = {"вступить", "заявка", "/start", "start", "/заявка", "/вступить"}
 
 
 class Session:
@@ -100,7 +104,6 @@ class Stats:
     total: int
     average_age: float | None
     top_cities: list[tuple[str, int]]
-    top_regions: list[tuple[str, int]]
     top_education: list[tuple[str, int]]
     party_members: dict[str, int]
 
@@ -116,9 +119,6 @@ def format_stats(s: Stats) -> str:
     ]
     for i, (city, cnt) in enumerate(s.top_cities, 1):
         lines.append(f"  {i}. {city} — {cnt}")
-    lines += ["", "Топ регионов:"]
-    for i, (region, cnt) in enumerate(s.top_regions, 1):
-        lines.append(f"  {i}. {region} — {cnt}")
     lines += ["", "Образование:"]
     for i, (edu, cnt) in enumerate(s.top_education, 1):
         lines.append(f"  {i}. {edu} — {cnt}")
