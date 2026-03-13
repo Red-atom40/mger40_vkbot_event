@@ -150,8 +150,22 @@ class VKBot:
             return yes_no_keyboard()
         return None
 
+    def _skip_optional_steps(self, session: Session) -> None:
+        """Пропускает условные шаги анкеты, которые не нужны для текущих ответов."""
+        while session.step_index < len(STEPS):
+            step = STEPS[session.step_index]
+            if step.key == "education_other" and session.answers.get("education_level") != "иное":
+                session.step_index += 1
+                continue
+            break
+
     def process_answer(self, user_id: int, session: Session, text: str) -> None:
         """Обрабатывает ответ пользователя на текущий вопрос анкеты, сохраняет его и переходит к следующему вопросу или завершает анкету"""
+        self._skip_optional_steps(session)
+        if session.step_index >= len(STEPS):
+            self.finalize_quiz(user_id, session)
+            return
+
         current_step = STEPS[session.step_index]
         ok, error_msg = validate(current_step.key, text, session.answers)
 
@@ -178,7 +192,11 @@ class VKBot:
             f"Answer saved vk_id={user_id} step={session.step_index} key={current_step.key}"
         )
         session.answers[current_step.key] = text
+        if current_step.key == "education_other":
+            session.answers["education_level"] = f"иное: {text.strip()}"
+
         session.step_index += 1
+        self._skip_optional_steps(session)
         session.touch()
 
         if session.step_index >= len(STEPS):

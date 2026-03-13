@@ -136,6 +136,12 @@ def validate_education_level(value: str) -> ValidationResult:
     return True, None
 
 
+def validate_education_other(value: str) -> ValidationResult:
+    if not value.strip():
+        return False, "Укажите, пожалуйста, какое именно у вас образование."
+    return True, None
+
+
 def canonicalize_education_level(value: str) -> str | None:
     """Возвращает каноничное значение уровня образования."""
     return _EDUCATION_LEVEL_MAP.get(value.strip().casefold())
@@ -167,6 +173,7 @@ VALIDATORS: dict[str, Callable[[str], ValidationResult]] = {
     "phone": validate_phone,
     "contact_info": validate_contact_info,
     "education_level": validate_education_level,
+    "education_other": validate_education_other,
     "is_member": validate_is_member,
     "previous_organizations": validate_previous_organizations,
     "study_or_work_place": validate_study_or_work_place,

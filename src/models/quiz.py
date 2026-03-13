@@ -64,6 +64,7 @@ STEPS: list[Step] = [
         "  высшее\n"
         "  иное",
     ),
+    Step("education_other", "Укажите, пожалуйста, какое у вас образование:"),
     Step("is_member", "Являетесь ли вы членом партии «Единая Россия»? (да / нет):"),
     Step(
         "previous_organizations",
