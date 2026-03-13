@@ -153,7 +153,7 @@ class VKBot:
     def process_answer(self, user_id: int, session: Session, text: str) -> None:
         """Обрабатывает ответ пользователя на текущий вопрос анкеты, сохраняет его и переходит к следующему вопросу или завершает анкету"""
         current_step = STEPS[session.step_index]
-        ok, error_msg = validate(current_step.key, text)
+        ok, error_msg = validate(current_step.key, text, session.answers)
 
         if not ok:
             self.client.send(

@@ -1,6 +1,14 @@
 from collections.abc import Callable
 from datetime import date, datetime
-from validation.russian_cities import is_russian_city, suggest_cities
+
+from validation.russian_cities import (
+    city_belongs_to_region,
+    is_russian_city,
+    is_russian_region,
+    regions_for_city,
+    suggest_cities,
+    suggest_regions,
+)
 
 ValidationResult = tuple[bool, str | None]
 EDUCATION_LEVEL_OPTIONS: tuple[str, ...] = (
@@ -12,6 +20,7 @@ EDUCATION_LEVEL_OPTIONS: tuple[str, ...] = (
 _EDUCATION_LEVEL_MAP: dict[str, str] = {
     option.casefold(): option for option in EDUCATION_LEVEL_OPTIONS
 }
+
 
 def parse_date(value: str) -> date | None:
     try:
@@ -44,30 +53,64 @@ def validate_birth_date(value: str) -> ValidationResult:
 
 
 def validate_region(value: str) -> ValidationResult:
-    if not value.strip():
+    region = value.strip()
+    if not region:
         return False, "Регион не может быть пустым."
-    return True, None
-
-
-def validate_city(value: str) -> ValidationResult:
-    city = value.strip()
-    if not city:
-        return False, "Город не может быть пустым."
-    if is_russian_city(city):
+    if is_russian_region(region):
         return True, None
-    hints = suggest_cities(city)
+
+    hints = suggest_regions(region)
     if hints:
         options = ", ".join(hints)
         return False, (
-            f"Город «{city}» не найден.\n"
+            f"Регион «{region}» не найден.\n"
             f"Возможно, вы имели в виду: {options}?\n"
-            "Введите официальное название города РФ на русском языке."
+            "Введите официальное название региона РФ на русском языке."
         )
+
     return (
         False,
-        f"Город «{city}» не найден среди городов РФ.\n"
-        "Введите официальное название города на русском языке (например: Москва, Казань, Тула).",
+        f"Регион «{region}» не найден среди регионов РФ.\n"
+        "Введите официальное название региона на русском языке (например: Хакасия, Татарстан, Краснодарский край).",
     )
+
+
+def validate_city(value: str, region: str | None = None) -> ValidationResult:
+    city = value.strip()
+    if not city:
+        return False, "Город не может быть пустым."
+
+    if not is_russian_city(city):
+        hints = suggest_cities(city)
+        if hints:
+            options = ", ".join(hints)
+            return False, (
+                f"Город «{city}» не найден.\n"
+                f"Возможно, вы имели в виду: {options}?\n"
+                "Введите официальное название города РФ на русском языке."
+            )
+        return (
+            False,
+            f"Город «{city}» не найден среди городов РФ.\n"
+            "Введите официальное название города на русском языке (например: Москва, Казань, Тула).",
+        )
+
+    if region and not city_belongs_to_region(city, region):
+        candidate_regions = regions_for_city(city)
+        if candidate_regions:
+            options = ", ".join(candidate_regions[:5])
+            return (
+                False,
+                f"Город «{city}» не относится к региону «{region}».\n"
+                f"Этот город найден в регионах: {options}.\n"
+                "Проверьте правильность региона или города и попробуйте снова.",
+            )
+        return False, (
+            f"Город «{city}» не относится к региону «{region}».\n"
+            "Проверьте правильность региона или города и попробуйте снова."
+        )
+
+    return True, None
 
 
 def validate_phone(value: str) -> ValidationResult:
@@ -130,8 +173,16 @@ VALIDATORS: dict[str, Callable[[str], ValidationResult]] = {
 }
 
 
-def validate(key: str, value: str) -> ValidationResult:
+def validate(
+    key: str,
+    value: str,
+    answers: dict[str, str] | None = None,
+) -> ValidationResult:
     """Валидирует ответ пользователя на текущем шаге анкеты"""
+    if key == "city":
+        region = (answers or {}).get("region")
+        return validate_city(value, region)
+
     validator = VALIDATORS.get(key)
     if validator is None:
         return (
