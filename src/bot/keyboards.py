@@ -25,6 +25,22 @@ def yes_no_keyboard() -> str:
     return kb.get_keyboard()
 
 
+def event_rsvp_keyboard(event_id: str) -> str:
+    """Возвращает inline-клавиатуру RSVP, привязанную к конкретному мероприятию."""
+    kb = VkKeyboard(inline=True)
+    kb.add_button(
+        "Да",
+        color=VkKeyboardColor.POSITIVE,
+        payload={"type": "rsvp", "event_id": event_id, "answer": "да"},
+    )
+    kb.add_button(
+        "Нет",
+        color=VkKeyboardColor.NEGATIVE,
+        payload={"type": "rsvp", "event_id": event_id, "answer": "нет"},
+    )
+    return kb.get_keyboard()
+
+
 def education_keyboard() -> str:
     """Возвращает клавиатуру с допустимыми вариантами образования."""
     kb = VkKeyboard(one_time=True)

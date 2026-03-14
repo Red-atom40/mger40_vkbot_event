@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
+create_rsvp_messages_table = """
+CREATE TABLE IF NOT EXISTS rsvp_messages (
+    vk_id       INTEGER NOT NULL,
+    event_id    TEXT NOT NULL,
+    message_id  INTEGER NOT NULL,
+    created_at  REAL NOT NULL,
+    PRIMARY KEY (vk_id, event_id)
+);
+"""
+
 _EDITABLE_APPLICATION_FIELDS: tuple[str, ...] = (
     "fio",
     "birth_date",
@@ -92,6 +102,7 @@ class Database:
             self.conn.execute(create_rsvp_table)
             self.conn.execute(create_event_links_table)
             self.conn.execute(create_events_table)
+            self.conn.execute(create_rsvp_messages_table)
             self.conn.commit()
 
     def has_application(self, vk_id: int) -> bool:
@@ -305,6 +316,34 @@ class Database:
                 (answer, datetime.now().timestamp(), vk_id, event_id),
             )
             self.conn.commit()
+
+    def save_rsvp_message(self, vk_id: int, event_id: str, message_id: int) -> None:
+        """Сохраняет id сообщения с inline-вопросом RSVP для последующего удаления."""
+        with self.lock:
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO rsvp_messages (vk_id, event_id, message_id, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (vk_id, event_id, message_id, datetime.now().timestamp()),
+            )
+            self.conn.commit()
+
+    def pop_rsvp_message_id(self, vk_id: int, event_id: str) -> int | None:
+        """Возвращает и удаляет id сообщения RSVP для пользователя и мероприятия."""
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT message_id FROM rsvp_messages WHERE vk_id = ? AND event_id = ?",
+                (vk_id, event_id),
+            ).fetchone()
+            if row is None:
+                return None
+            self.conn.execute(
+                "DELETE FROM rsvp_messages WHERE vk_id = ? AND event_id = ?",
+                (vk_id, event_id),
+            )
+            self.conn.commit()
+        return int(row["message_id"])
 
     def get_event_links(self) -> list[str]:
         """Возвращает список ссылок на мероприятия для рассылки пользователям"""

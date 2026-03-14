@@ -1,3 +1,4 @@
+import json
 import re
 import sqlite3
 
@@ -120,8 +121,12 @@ class VKBot:
         user_id: int = event.user_id
         text = strip_vk_mentions(event.text).strip()
         lower_text = text.lower()
+        payload = self._extract_payload(event)
 
         logger.debug(f"received message from {user_id}: {text!r}")
+
+        if self._handle_rsvp_payload(user_id, payload):
+            return
 
         if lower_text in START_COMMANDS:
             self.start_quiz(user_id)
@@ -180,12 +185,77 @@ class VKBot:
 
         self.process_answer(user_id, session, text)
 
+    def _extract_payload(self, event) -> dict | None:
+        """Извлекает payload из события LongPoll при нажатии кнопки с payload."""
+        raw_payload = None
+        extra_values = getattr(event, "extra_values", None)
+        if isinstance(extra_values, dict):
+            raw_payload = extra_values.get("payload")
+
+        if raw_payload is None:
+            raw_payload = getattr(event, "payload", None)
+
+        if raw_payload is None:
+            return None
+
+        if isinstance(raw_payload, dict):
+            return raw_payload
+
+        if isinstance(raw_payload, str):
+            try:
+                parsed = json.loads(raw_payload)
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid payload JSON from user {event.user_id}: {raw_payload!r}")
+                return None
+            return parsed if isinstance(parsed, dict) else None
+
+        return None
+
+    def _handle_rsvp_payload(self, user_id: int, payload: dict | None) -> bool:
+        """Сохраняет RSVP-ответ из payload inline-кнопки. Возвращает True, если payload обработан."""
+        if not payload or payload.get("type") != "rsvp":
+            return False
+
+        event_id = str(payload.get("event_id", "")).strip()
+        answer = str(payload.get("answer", "")).strip().lower()
+
+        if not event_id or answer not in ("да", "нет"):
+            self.client.send(user_id, "Не удалось обработать ответ. Попробуйте ещё раз.")
+            return True
+
+        self.db.save_rsvp_answer(user_id, event_id, answer)
+        self._cleanup_rsvp_prompt_message(user_id, event_id)
+        logger.info(f"RSVP via payload vk_id={user_id} event={event_id} answer={answer!r}")
+        self.client.send(user_id, "Спасибо! Ваш ответ записан.")
+        return True
+
+    def _cleanup_rsvp_prompt_message(self, user_id: int, event_id: str) -> None:
+        """Очищает второе сообщение RSVP после ответа: редактирует, при ошибке удаляет."""
+        message_id = self.db.pop_rsvp_message_id(user_id, event_id)
+        if message_id is None:
+            return
+        edited = self.client.edit_message(
+            user_id,
+            message_id,
+            "Ответ принят.",
+            keyboard=empty_keyboard(),
+        )
+        if edited:
+            return
+
+        deleted = self.client.delete_message(message_id, delete_for_all=True)
+        if not deleted:
+            logger.warning(
+                f"Unable to cleanup RSVP message: vk_id={user_id}, event_id={event_id}, message_id={message_id}"
+            )
+
     def handle_rsvp(self, user_id: int, event_id: str, text: str) -> None:
         answer = text.lower().strip()
         if answer not in ("да", "нет"):
             self.client.send(user_id, "Пожалуйста, ответьте «да» или «нет».", keyboard=yes_no_keyboard())
             return
         self.db.save_rsvp_answer(user_id, event_id, answer)
+        self._cleanup_rsvp_prompt_message(user_id, event_id)
 
         logger.info(f"RSVP vk_id={user_id} event={event_id} answer={answer!r}")
 
