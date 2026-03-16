@@ -51,6 +51,7 @@ create_events_table = """
 CREATE TABLE IF NOT EXISTS events (
     event_id    TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
+    message_text TEXT NOT NULL DEFAULT '',
     created_at  REAL NOT NULL
 );
 """
@@ -103,7 +104,17 @@ class Database:
             self.conn.execute(create_event_links_table)
             self.conn.execute(create_events_table)
             self.conn.execute(create_rsvp_messages_table)
+            self._migrate_events_message_text_column()
             self.conn.commit()
+
+    def _migrate_events_message_text_column(self) -> None:
+        """Добавляет колонку message_text в events для старых БД."""
+        rows = self.conn.execute("PRAGMA table_info(events)").fetchall()
+        column_names = {str(row["name"]) for row in rows}
+        if "message_text" not in column_names:
+            self.conn.execute(
+                "ALTER TABLE events ADD COLUMN message_text TEXT NOT NULL DEFAULT ''"
+            )
 
     def has_application(self, vk_id: int) -> bool:
         with self.lock:
@@ -281,14 +292,44 @@ class Database:
         ).fetchall()
         return {row["is_member"]: row["cnt"] for row in rows}
 
-    def save_event(self, event_id: str, title: str) -> None:
+    def save_event(self, event_id: str, title: str, message_text: str) -> None:
         """Сохраняет заголовок мероприятия при создании рассылки"""
         with self.lock:
             self.conn.execute(
-                "INSERT OR IGNORE INTO events (event_id, title, created_at) VALUES (?, ?, ?)",
-                (event_id, title, datetime.now().timestamp()),
+                """
+                INSERT OR IGNORE INTO events (event_id, title, message_text, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (event_id, title, message_text, datetime.now().timestamp()),
             )
             self.conn.commit()
+
+    def get_recent_events_for_user(
+        self,
+        vk_id: int,
+        before_ts: float,
+        within_seconds: int,
+    ) -> list[dict]:
+        """Возвращает мероприятия за период до регистрации, которые еще не отправлялись пользователю."""
+        since_ts = before_ts - within_seconds
+        with self.lock:
+            rows = self.conn.execute(
+                """
+                SELECT
+                    e.event_id,
+                    e.title,
+                    e.message_text,
+                    e.created_at
+                FROM events e
+                LEFT JOIN rsvp r ON r.event_id = e.event_id AND r.vk_id = ?
+                WHERE r.event_id IS NULL
+                  AND e.created_at <= ?
+                  AND e.created_at >= ?
+                ORDER BY e.created_at ASC
+                """,
+                (vk_id, before_ts, since_ts),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def add_pending_rsvp(self, vk_id: int, event_id: str) -> None:
         """Добавляет запись о том, что пользователю с vk_id была отправлена информация о мероприятии event_id и ожидается его ответ (да/нет)"""

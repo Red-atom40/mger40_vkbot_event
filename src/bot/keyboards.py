@@ -2,13 +2,13 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 
 def start_keyboard(has_application: bool = False) -> str:
-    """Возвращает основную клавиатуру: «Заявка» до анкеты, «Мои данные» после неё."""
+    """Возвращает основную клавиатуру: «Заявка» всегда, доп. кнопки после анкеты."""
     kb = VkKeyboard(one_time=False)
+    kb.add_button("Заявка", color=VkKeyboardColor.PRIMARY)
     if has_application:
+        kb.add_line()
         kb.add_button("Мои данные", color=VkKeyboardColor.SECONDARY)
         kb.add_button("Изменить данные", color=VkKeyboardColor.PRIMARY)
-    else:
-        kb.add_button("Заявка", color=VkKeyboardColor.PRIMARY)
     return kb.get_keyboard()
 
 
@@ -37,6 +37,17 @@ def event_rsvp_keyboard(event_id: str) -> str:
         "Нет",
         color=VkKeyboardColor.NEGATIVE,
         payload={"type": "rsvp", "event_id": event_id, "answer": "нет"},
+    )
+    return kb.get_keyboard()
+
+
+def quiz_stop_inline_keyboard() -> str:
+    """Возвращает inline-кнопку для досрочной остановки анкеты."""
+    kb = VkKeyboard(inline=True)
+    kb.add_button(
+        "Остановить анкету",
+        color=VkKeyboardColor.NEGATIVE,
+        payload={"type": "quiz_stop"},
     )
     return kb.get_keyboard()
 

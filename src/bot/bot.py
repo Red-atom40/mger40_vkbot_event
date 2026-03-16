@@ -1,13 +1,16 @@
 import json
 import re
 import sqlite3
+from datetime import datetime
 
 from loguru import logger
 
 from bot.keyboards import (
     education_keyboard,
     empty_keyboard,
+    event_rsvp_keyboard,
     profile_fields_keyboard,
+    quiz_stop_inline_keyboard,
     start_keyboard,
     yes_no_keyboard,
 )
@@ -72,6 +75,7 @@ PROFILE_FIELD_ORDER: tuple[str, ...] = (
 STEP_QUESTION_BY_KEY: dict[str, str] = {
     step.key: step.question for step in STEPS
 }
+RECENT_EVENTS_LOOKBACK_SECONDS = 30 * 24 * 60 * 60
 
 
 def format_event_id(event_id: str) -> str:
@@ -99,6 +103,7 @@ class VKBot:
         self.client = client
         self.session: dict[int, Session] = {}
         self.profile_edit_field: dict[int, str] = {}
+        self.quiz_stop_prompt_message: dict[int, int] = {}
 
     def main_keyboard(self, user_id: int) -> str:
         """Возвращает основную клавиатуру в зависимости от статуса анкеты."""
@@ -124,6 +129,9 @@ class VKBot:
         payload = self._extract_payload(event)
 
         logger.debug(f"received message from {user_id}: {text!r}")
+
+        if self._handle_quiz_stop_payload(user_id, payload, event):
+            return
 
         if self._handle_rsvp_payload(user_id, payload):
             return
@@ -229,6 +237,26 @@ class VKBot:
         self.client.send(user_id, "Спасибо! Ваш ответ записан.")
         return True
 
+    def _handle_quiz_stop_payload(self, user_id: int, payload: dict | None, event) -> bool:
+        """Обрабатывает нажатие inline-кнопки остановки анкеты."""
+        if not payload or payload.get("type") != "quiz_stop":
+            return False
+
+        message_id = getattr(event, "message_id", None)
+        if not isinstance(message_id, int):
+            message_id = self.quiz_stop_prompt_message.get(user_id)
+        if isinstance(message_id, int):
+            self.client.edit_message(
+                user_id,
+                message_id,
+                "Заявка остановлена.",
+                keyboard=empty_keyboard(),
+            )
+
+        self.quiz_stop_prompt_message.pop(user_id, None)
+        self.cancel_quiz(user_id)
+        return True
+
     def _cleanup_rsvp_prompt_message(self, user_id: int, event_id: str) -> None:
         """Очищает второе сообщение RSVP после ответа: редактирует, при ошибке удаляет."""
         message_id = self.db.pop_rsvp_message_id(user_id, event_id)
@@ -277,18 +305,34 @@ class VKBot:
 
         logger.info(f"Quiz started vk_id={user_id}")
 
+        self.send_pinned_start_message(user_id)
         self.session[user_id] = Session(user_id, self.config.session_timeout)
         self.client.send(
             user_id,
             "Добро пожаловать! Вы начинаете заполнение заявки на вступление в «Молодую Гвардию».\n"
             f"На ответы отводится {self.config.session_timeout // 60} минут. "
-            "Если время выйдет — нужно начать заново.\n"
-            "Для досрочного завершения введите /стоп.\n\n" + STEPS[0].question,
+            "Если время выйдет — нужно начать заново.",
+            keyboard=empty_keyboard(),
+        )
+        stop_message_id = self.client.send(
+            user_id,
+            "Для досрочного завершения введите /стоп или нажмите \"Остановить анкету\".",
+            keyboard=quiz_stop_inline_keyboard(),
+        )
+        if stop_message_id is not None:
+            self.quiz_stop_prompt_message[user_id] = stop_message_id
+        else:
+            self.quiz_stop_prompt_message.pop(user_id, None)
+
+        self.client.send(
+            user_id,
+            STEPS[0].question,
             keyboard=empty_keyboard(),
         )
 
     def cancel_quiz(self, user_id: int) -> None:
         """Прерывает текущую анкету пользователя по его команде."""
+        self.quiz_stop_prompt_message.pop(user_id, None)
         session = self.session.pop(user_id, None)
         if session is None:
             self.client.send(
@@ -301,7 +345,7 @@ class VKBot:
         logger.info(f"Quiz canceled vk_id={user_id}")
         self.client.send(
             user_id,
-            "Анкета остановлена. Чтобы начать заново, нажмите «Заявка» или введите /start.",
+            "Заявка остановлена. Чтобы начать заново, нажмите «Заявка» или введите /start.",
             keyboard=self.main_keyboard(user_id),
         )
 
@@ -309,14 +353,33 @@ class VKBot:
         """Отправляет список пользовательских команд и кнопку старта анкеты."""
         self.client.send(
             user_id,
-            "Команды пользователя:\n"
-            "/вступить — начать заполнение анкеты\n"
+            self._main_commands_text(),
+            keyboard=self.main_keyboard(user_id),
+        )
+
+    def send_pinned_start_message(self, user_id: int) -> None:
+        """Отправляет приветствие с основными командами и закрепляет его в чате."""
+        message_id = self.client.send(
+            user_id,
+            "Привет! Добро пожаловать в «Молодую Гвардию».\n\n" + self._main_commands_text(),
+            keyboard=self.main_keyboard(user_id),
+        )
+        if message_id is None:
+            return
+
+        pinned = self.client.pin_message(user_id, message_id)
+        if not pinned:
+            logger.warning(f"Unable to pin start message: vk_id={user_id}, message_id={message_id}")
+
+    def _main_commands_text(self) -> str:
+        """Возвращает единый текст с основными пользовательскими командами."""
+        return (
+            "Основные команды:\n"
             "/заявка — начать заполнение анкеты\n"
             "/стоп — прервать текущую анкету\n"
             "Мои данные — посмотреть сохранённые данные\n"
             "/помощь — подсказка по командам\n\n"
-            "Также можно пользоваться кнопками ниже.",
-            keyboard=self.main_keyboard(user_id),
+            "Также можно пользоваться кнопками ниже."
         )
 
     def send_welcome(self, user_id: int) -> None:
@@ -604,9 +667,11 @@ class VKBot:
     def finalize_quiz(self, user_id: int, session: Session) -> None:
         """Завершает анкету, сохраняет её в базе данных и отправляет пользователю сообщение о принятии заявки"""
         logger.info(f"Saving application vk_id={user_id}")
+        registration_ts = datetime.now().timestamp()
+        quiz = Quiz.from_answers(session.answers, user_id)
+        quiz.created_at = registration_ts
         try:
-            self.db.save_application(
-                Quiz.from_answers(session.answers, user_id))
+            self.db.save_application(quiz)
         except sqlite3.Error as e:
             logger.error(f"DB error vk_id={user_id}: {e}")
             self.client.send(
@@ -618,11 +683,45 @@ class VKBot:
         logger.info(f"Application accepted vk_id={user_id}")
 
         del self.session[user_id]
+        self.quiz_stop_prompt_message.pop(user_id, None)
         self.client.send(
             user_id,
             "Ваша заявка успешно принята!\nМы рассмотрим её в ближайшее время и свяжемся с вами.",
             keyboard=self.main_keyboard(user_id),
         )
+        self._send_recent_events_after_registration(user_id, registration_ts)
+
+    def _send_recent_events_after_registration(self, user_id: int, registration_ts: float) -> None:
+        """Отправляет новому участнику мероприятия за последний месяц до регистрации."""
+        events = self.db.get_recent_events_for_user(
+            user_id,
+            before_ts=registration_ts,
+            within_seconds=RECENT_EVENTS_LOOKBACK_SECONDS,
+        )
+        if not events:
+            return
+
+        self.client.send(
+            user_id,
+            "Отправляю мероприятия, опубликованные за последний месяц до вашего вступления.",
+        )
+        for event in events:
+            event_id = str(event["event_id"])
+            message_text = str(event.get("message_text", "")).strip()
+            if not message_text:
+                message_text = str(event.get("title", "")).strip() or (
+                    f"Мероприятие от {format_event_id(event_id)}"
+                )
+
+            self.db.add_pending_rsvp(user_id, event_id)
+            self.client.send(user_id, message_text)
+            question_message_id = self.client.send(
+                user_id,
+                "Вы планируете посетить это мероприятие?",
+                keyboard=event_rsvp_keyboard(event_id),
+            )
+            if question_message_id is not None:
+                self.db.save_rsvp_message(user_id, event_id, question_message_id)
 
     # Admin Panel команды
 

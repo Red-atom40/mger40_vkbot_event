@@ -110,6 +110,15 @@ class VkClient:
             logger.warning(f"Failed to edit message {message_id} for user {user_id}: {e}")
             return False
 
+    def pin_message(self, user_id: int, message_id: int) -> bool:
+        """Закрепляет сообщение в чате с пользователем."""
+        try:
+            self.api.messages.pin(peer_id=user_id, message_id=message_id)
+            return True
+        except vk_api.exceptions.ApiError as e:
+            logger.warning(f"Failed to pin message {message_id} for user {user_id}: {e}")
+            return False
+
     def listen(self) -> Iterator[Event]:
         """Генератор для прослушивания новых сообщений, направленных боту"""
         while True:

@@ -73,7 +73,7 @@ STEPS: list[Step] = [
     Step("study_or_work_place", "Место учёбы / работы (название и город):"),
 ]
 
-START_COMMANDS = {"вступить", "заявка", "/вступить", "/заявка"}
+START_COMMANDS = {"вступить", "заявка", "/заявка"}
 
 
 class Session:

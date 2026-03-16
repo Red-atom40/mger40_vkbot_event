@@ -90,20 +90,20 @@ class Broadcaster:
 
     def broadcast(self, post_text: str) -> None:
         """Отправляет сообщение о новом мероприятии всем пользователям"""
-        vk_ids = self.db.get_all_vk_ids()
-        if not vk_ids:
-            logger.warning("No users to broadcast to.")
-            return
-
         event_id = datetime.now().strftime("%Y%m%d%H%M%S")
         first_line = post_text.strip().splitlines()[0] if post_text.strip() else post_text
         title = first_line[:80] + ("…" if len(first_line) > 80 else "")
-        self.db.save_event(event_id, title)
         links_block = "\n".join(self.db.get_event_links())
         message_parts = [post_text.strip()] if post_text.strip() else [post_text]
         if links_block:
             message_parts.append(links_block)
         message = "\n\n".join(message_parts)
+        self.db.save_event(event_id, title, message)
+
+        vk_ids = self.db.get_all_vk_ids()
+        if not vk_ids:
+            logger.warning(f"No users to broadcast to. Event {event_id} saved for future users.")
+            return
 
         logger.info(f"Broadcasting event {event_id} to {len(vk_ids)} users.")
 
