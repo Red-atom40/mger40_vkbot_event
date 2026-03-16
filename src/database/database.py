@@ -40,13 +40,6 @@ CREATE TABLE IF NOT EXISTS rsvp (
 );
 """
 
-create_event_links_table = """
-CREATE TABLE IF NOT EXISTS event_links (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    link    TEXT NOT NULL
-);
-"""
-
 create_events_table = """
 CREATE TABLE IF NOT EXISTS events (
     event_id    TEXT PRIMARY KEY,
@@ -101,7 +94,6 @@ class Database:
             self.conn.execute(create_application_table)
             self.conn.execute(create_admins_table)
             self.conn.execute(create_rsvp_table)
-            self.conn.execute(create_event_links_table)
             self.conn.execute(create_events_table)
             self.conn.execute(create_rsvp_messages_table)
             self._migrate_events_message_text_column()
@@ -385,36 +377,6 @@ class Database:
             )
             self.conn.commit()
         return int(row["message_id"])
-
-    def get_event_links(self) -> list[str]:
-        """Возвращает список ссылок на мероприятия для рассылки пользователям"""
-        with self.lock:
-            rows = self.conn.execute(
-                "SELECT link FROM event_links ORDER BY id"
-            ).fetchall()
-        return [row["link"] for row in rows]
-
-    def add_event_link(self, link: str) -> None:
-        """Добавляет новую ссылку на мероприятие для рассылки пользователям. Сохраняет в базе данных"""
-        with self.lock:
-            self.conn.execute(
-                "INSERT INTO event_links (link) VALUES (?)", (link,))
-            self.conn.commit()
-
-    def remove_event_link(self, index: int) -> str | None:
-        """Удаляет ссылку по порядковому номеру (0-based). Возвращает удалённое значение или None."""
-        with self.lock:
-            row = self.conn.execute(
-                "SELECT id, link FROM event_links ORDER BY id LIMIT 1 OFFSET ?", (
-                    index,)
-            ).fetchone()
-            if row is None:
-                return None
-            removed = row["link"]
-            self.conn.execute(
-                "DELETE FROM event_links WHERE id = ?", (row["id"],))
-            self.conn.commit()
-        return removed
 
     def get_events_list(self) -> list[dict]:
         """Возвращает список всех мероприятий со статистикой ответов и заголовком"""

@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
+import re
 import time
 from random import getrandbits
 
@@ -118,6 +119,59 @@ class VkClient:
         except vk_api.exceptions.ApiError as e:
             logger.warning(f"Failed to pin message {message_id} for user {user_id}: {e}")
             return False
+
+    def resolve_user_id(self, user_ref: str) -> int | None:
+        """Пытается получить числовой VK ID из @user, ссылки, mention или id123."""
+        candidate = (user_ref or "").strip()
+        if not candidate:
+            return None
+
+        mention_match = re.match(r"^\[(?:id|club)(\d+)\|[^\]]+\]$", candidate)
+        if mention_match:
+            return int(mention_match.group(1))
+
+        normalized = candidate.removeprefix("@")
+        normalized = normalized.removeprefix("https://vk.com/")
+        normalized = normalized.removeprefix("http://vk.com/")
+        normalized = normalized.removeprefix("vk.com/")
+        normalized = normalized.strip("/")
+
+        if normalized.isdigit():
+            return int(normalized)
+
+        id_match = re.match(r"^id(\d+)$", normalized)
+        if id_match:
+            return int(id_match.group(1))
+
+        try:
+            users = self.api.users.get(user_ids=normalized)
+            if users:
+                return int(users[0]["id"])
+        except (vk_api.exceptions.ApiError, KeyError, ValueError, TypeError) as e:
+            logger.warning(f"Failed to resolve user reference {user_ref!r}: {e}")
+        return None
+
+    def get_users_display_names(self, user_ids: list[int]) -> dict[int, str]:
+        """Возвращает отображаемые имена пользователей по списку VK ID."""
+        if not user_ids:
+            return {}
+
+        unique_ids = sorted(set(user_ids))
+        result: dict[int, str] = {uid: f"id{uid}" for uid in unique_ids}
+        try:
+            users = self.api.users.get(user_ids=unique_ids)
+            for user in users:
+                uid = int(user.get("id", 0))
+                if uid <= 0:
+                    continue
+                first_name = str(user.get("first_name", "")).strip()
+                last_name = str(user.get("last_name", "")).strip()
+                full_name = f"{first_name} {last_name}".strip()
+                if full_name:
+                    result[uid] = full_name
+        except (vk_api.exceptions.ApiError, KeyError, ValueError, TypeError) as e:
+            logger.warning(f"Failed to fetch users display names: {e}")
+        return result
 
     def listen(self) -> Iterator[Event]:
         """Генератор для прослушивания новых сообщений, направленных боту"""

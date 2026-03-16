@@ -1,20 +1,34 @@
+import json
+
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 
 def start_keyboard(has_application: bool = False) -> str:
-    """Возвращает основную клавиатуру: «Заявка» всегда, доп. кнопки после анкеты."""
+    """Возвращает основную клавиатуру: «Заявка» до анкеты, профильные кнопки после неё."""
     kb = VkKeyboard(one_time=False)
-    kb.add_button("Заявка", color=VkKeyboardColor.PRIMARY)
     if has_application:
-        kb.add_line()
         kb.add_button("Мои данные", color=VkKeyboardColor.SECONDARY)
         kb.add_button("Изменить данные", color=VkKeyboardColor.PRIMARY)
+    else:
+        kb.add_button("Заявка", color=VkKeyboardColor.PRIMARY)
     return kb.get_keyboard()
 
 
 def empty_keyboard() -> str:
     """Возвращает JSON пустой клавиатуры (скрывает кнопки после начала анкеты)."""
     return VkKeyboard.get_empty_keyboard()
+
+
+def empty_inline_keyboard() -> str:
+    """Возвращает JSON пустой inline-клавиатуры для очистки inline-кнопок."""
+    return json.dumps(
+        {
+            "one_time": False,
+            "inline": True,
+            "buttons": [],
+        },
+        ensure_ascii=False,
+    )
 
 
 def yes_no_keyboard() -> str:

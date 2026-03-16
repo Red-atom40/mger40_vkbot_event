@@ -17,6 +17,7 @@ _WELCOME_MESSAGE = (
     "или напишите «заявка»."
 )
 _WELCOME_IMAGE_PATH = Path(__file__).resolve().parents[2] / "images" / "logo.png"
+_WELCOME_DUPLICATE_WINDOW_SECONDS = 8
 
 
 class Broadcaster:
@@ -72,7 +73,7 @@ class Broadcaster:
         """Отправляет приветственное сообщение с кнопкой «Заявка» новому участнику."""
         now = time.time()
         last_sent = self._welcome_last_sent_at.get(vk_id)
-        if last_sent is not None and now - last_sent < 60:
+        if last_sent is not None and now - last_sent < _WELCOME_DUPLICATE_WINDOW_SECONDS:
             logger.info(
                 f"Welcome skipped (duplicate event): vk_id={vk_id}, source={source}, "
                 f"delta={round(now - last_sent, 1)}s"
@@ -93,11 +94,7 @@ class Broadcaster:
         event_id = datetime.now().strftime("%Y%m%d%H%M%S")
         first_line = post_text.strip().splitlines()[0] if post_text.strip() else post_text
         title = first_line[:80] + ("…" if len(first_line) > 80 else "")
-        links_block = "\n".join(self.db.get_event_links())
-        message_parts = [post_text.strip()] if post_text.strip() else [post_text]
-        if links_block:
-            message_parts.append(links_block)
-        message = "\n\n".join(message_parts)
+        message = post_text.strip() if post_text.strip() else post_text
         self.db.save_event(event_id, title, message)
 
         vk_ids = self.db.get_all_vk_ids()

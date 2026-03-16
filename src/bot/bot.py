@@ -8,6 +8,7 @@ from loguru import logger
 from bot.keyboards import (
     education_keyboard,
     empty_keyboard,
+    empty_inline_keyboard,
     event_rsvp_keyboard,
     profile_fields_keyboard,
     quiz_stop_inline_keyboard,
@@ -19,7 +20,7 @@ from database.database import Database
 from config import Config
 from models.quiz import START_COMMANDS, STEPS, Quiz, Session, format_stats
 from validation.validator import canonicalize_education_level, validate
-from validation.admin_validator import parse_vk_id, parse_link_index, parse_event_index
+from validation.admin_validator import parse_vk_id, parse_event_index
 
 
 _VK_MENTION_RE = re.compile(r"\[(?:id|club)\d+\|([^\]]+)\]")
@@ -242,16 +243,20 @@ class VKBot:
         if not payload or payload.get("type") != "quiz_stop":
             return False
 
-        message_id = getattr(event, "message_id", None)
+        message_id = self.quiz_stop_prompt_message.get(user_id)
         if not isinstance(message_id, int):
-            message_id = self.quiz_stop_prompt_message.get(user_id)
+            message_id = getattr(event, "message_id", None)
         if isinstance(message_id, int):
-            self.client.edit_message(
+            edited = self.client.edit_message(
                 user_id,
                 message_id,
                 "Заявка остановлена.",
-                keyboard=empty_keyboard(),
+                keyboard=empty_inline_keyboard(),
             )
+            if not edited:
+                logger.warning(
+                    f"Unable to edit stop prompt message: vk_id={user_id}, message_id={message_id}"
+                )
 
         self.quiz_stop_prompt_message.pop(user_id, None)
         self.cancel_quiz(user_id)
@@ -359,9 +364,13 @@ class VKBot:
 
     def send_pinned_start_message(self, user_id: int) -> None:
         """Отправляет приветствие с основными командами и закрепляет его в чате."""
+        self.client.send(
+            user_id,
+            "Привет! Добро пожаловать в «Молодую Гвардию».",
+        )
         message_id = self.client.send(
             user_id,
-            "Привет! Добро пожаловать в «Молодую Гвардию».\n\n" + self._main_commands_text(),
+            self._main_commands_text(),
             keyboard=self.main_keyboard(user_id),
         )
         if message_id is None:
@@ -744,12 +753,9 @@ class VKBot:
                     user_id,
                     "Команды администратора:\n"
                     "/статистика — статистика по заявкам\n"
-                    "/добавить_админа <vk_id> — добавить администратора\n"
-                    "/удалить_админа <vk_id> — удалить администратора\n"
+                    "/добавить_админа <@user> — добавить администратора\n"
+                    "/удалить_админа <@user> — удалить администратора\n"
                     "/админы — список всех администраторов\n"
-                    "/ссылки_для_рассылок — список ссылок рассылки\n"
-                    "/добавить_ссылку <текст> — добавить ссылку\n"
-                    "/удалить_ссылку <N> — удалить ссылку №N\n"
                     "/мероприятия — список мероприятий и статистика ответов\n"
                     "/участники <N> — список участников мероприятия №N с контактами",
                 )
@@ -762,18 +768,16 @@ class VKBot:
                 self.cmd_removeadmin(user_id, args)
             case "/админы":
                 admins = self.db.list_admins()
-                msg = (
-                    "Администраторы:\n" + "\n".join(str(a) for a in admins)
-                    if admins
-                    else "Список администраторов пуст."
-                )
+                if not admins:
+                    self.client.send(user_id, "Список администраторов пуст.")
+                    return
+                names = self.client.get_users_display_names(admins)
+                lines = ["Администраторы:"]
+                for i, admin_id in enumerate(admins, 1):
+                    display_name = names.get(admin_id, f"id{admin_id}")
+                    lines.append(f"№{i}. {admin_id}: [id{admin_id}|{display_name}]")
+                msg = "\n".join(lines)
                 self.client.send(user_id, msg)
-            case "/ссылки_для_рассылок":
-                self.cmd_list_links(user_id)
-            case "/добавить_ссылку":
-                self.cmd_add_link(user_id, args)
-            case "/удалить_ссылку":
-                self.cmd_remove_link(user_id, args)
             case "/мероприятия":
                 self.cmd_list_events(user_id)
             case "/участники":
@@ -788,73 +792,54 @@ class VKBot:
 
     def cmd_addadmin(self, user_id: int, args: list[str]) -> None:
         """Добавляет нового администратора по vk_id, если его нет в списке админов. Сохраняет в базе данных"""
-        target, err = parse_vk_id(args)
+        target, err = self._resolve_user_target(args)
         if err:
-            self.client.send(user_id, f"{err} Пример: /добавить_админа 123456")
+            self.client.send(user_id, f"{err} Пример: /добавить_админа @id123456")
             return
         if self.db.is_admin(target):
             self.client.send(
-                user_id, f"Пользователь {target} уже является администратором.")
+                user_id,
+                f"Пользователь {self._format_user_mention(target)} уже является администратором.",
+            )
             return
         self.db.add_admin(target, added_by=user_id)
         logger.info(f"Admin added: {target} by {user_id}")
         self.client.send(
-            user_id, f"Пользователь {target} добавлен в администраторы.")
+            user_id, f"Пользователь {self._format_user_mention(target)} добавлен в администраторы.")
 
     def cmd_removeadmin(self, user_id: int, args: list[str]) -> None:
         """Удаляет администратора по vk_id, если он есть в списке админов и не является суперадмином из config.json. Сохраняет изменения в базе данных"""
-        target, err = parse_vk_id(args)
+        target, err = self._resolve_user_target(args)
         if err:
-            self.client.send(user_id, f"{err} Пример: /удалить_админа 123456")
+            self.client.send(user_id, f"{err} Пример: /удалить_админа @id123456")
             return
         if not self.db.remove_admin(target):
             self.client.send(
                 user_id,
-                f"Пользователь {target} — суперадмин из config.json, его нельзя удалить через бота.",
+                f"Пользователь {self._format_user_mention(target)} — суперадмин из config.json, его нельзя удалить через бота.",
             )
             return
         logger.info(f"Admin removed: {target} by {user_id}")
         self.client.send(
-            user_id, f"Пользователь {target} удалён из администраторов.")
+            user_id, f"Пользователь {self._format_user_mention(target)} удалён из администраторов.")
 
-    # Работа со ссылками для рассылки
-
-    def cmd_list_links(self, user_id: int) -> None:
-        """Отправляет администратору список ссылок для рассылки, сохранённых в базе данных"""
-        links = self.db.get_event_links()
-        if not links:
-            self.client.send(user_id, "Список ссылок рассылки пуст.")
-            return
-        lines = ["Ссылки рассылки:"]
-        for i, link in enumerate(links, 1):
-            lines.append(f"  {i}. {link}")
-        self.client.send(user_id, "\n".join(lines))
-
-    def cmd_add_link(self, user_id: int, args: list[str]) -> None:
-        """Добавляет новую ссылку для рассылки, если её нет в базе данных. Сохраняет в базе данных"""
+    def _resolve_user_target(self, args: list[str]) -> tuple[int | None, str | None]:
+        """Разбирает аргумент пользователя в командах админов: id, @user, ссылка, mention."""
+        target, err = parse_vk_id(args)
+        if err is None:
+            return target, None
         if not args:
-            self.client.send(
-                user_id, "Укажите текст ссылки: /добавить_ссылку Ссылка на чат: https://vk.me/join/...")
-            return
-        new_link = " ".join(args)
-        self.db.add_event_link(new_link)
-        logger.info(f"Link added by vk_id={user_id}: {new_link!r}")
-        self.client.send(user_id, f"Ссылка добавлена: {new_link}")
+            return None, "Укажите пользователя в формате @user или ссылкой на профиль."
 
-    def cmd_remove_link(self, user_id: int, args: list[str]) -> None:
-        """Удаляет ссылку для рассылки по номеру, если она есть в базе данных. Сохраняет изменения в базе данных"""
-        idx, err = parse_link_index(args)
-        if err:
-            self.client.send(user_id, f"{err} Пример: /удалить_ссылку 1")
-            return
-        removed = self.db.remove_event_link(idx)
-        if removed is None:
-            count = len(self.db.get_event_links())
-            self.client.send(
-                user_id, f"Нет ссылки с номером {idx + 1}. Всего ссылок: {count}.")
-            return
-        logger.info(f"Link {idx + 1} removed by vk_id={user_id}: {removed!r}")
-        self.client.send(user_id, f"Ссылка №{idx + 1} удалена: {removed}")
+        resolved = self.client.resolve_user_id(args[0])
+        if resolved is None:
+            return None, "Не удалось определить пользователя. Используйте @user, ссылку VK или id123."
+        return resolved, None
+
+    @staticmethod
+    def _format_user_mention(vk_id: int) -> str:
+        """Формирует кликабельное VK-упоминание пользователя."""
+        return f"[id{vk_id}|@id{vk_id}]"
 
     # Работа с мероприятиями и участниками
 
