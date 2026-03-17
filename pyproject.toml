@@ -1,0 +1,11 @@
+[project]
+name = "mger40_vkbot_event"
+version = "1.0.0"
+description = "МГЕР40: VK-бот для рассылок"
+readme = "README.md"
+requires-python = "==3.12.0"
+dependencies = [
+    "vk-api==11.10.0",
+    "cryptography==46.0.5",
+    "loguru==0.7.3",
+]

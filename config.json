@@ -1,0 +1,10 @@
+{
+  "vk_token": "your_vk_api_token",
+  "group_id": "your_group_id",
+  "admin_ids": ["admin_user_id1", "admin_user_id2"],
+  "db_path": "mger40_vkbot_event.db",
+  "broadcast_tag": "#мероприятие",
+  "session_timeout": 600,
+  "reconnect_delay": 5,
+  "log_level": "INFO"
+}
