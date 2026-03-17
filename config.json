@@ -1,10 +1,10 @@
 {
-  "vk_token": "vk1.a.S85ljvvA5xaxhwAeq8NQZ9sYRchTAEqxamyTu01Z1gzl_XMvI-qQIzkp_9gQccsY1IbD3E9F3UcMqp4l05xu6es8OWkHIu4fpbdRY3-rKT0oroUwXQlo7h2Ns3AiVNqHbnLKb63vVDCY5YUSO08QTK2hRlY1UqlbKoUm5L7RXHiUcdhAbpp20-i5srkQjQRmzpO6x794dxvJAUbDcAY_Ig",
-  "group_id": 236058783,
-  "admin_ids": [458508216, 411970889],
-  "db_path": "quiz.db",
+  "vk_token": "your_vk_api_token",
+  "group_id": "your_group_id",
+  "admin_ids": ["admin_user_id1", "admin_user_id2"],
+  "db_path": "mger40_vkbot_event.db",
   "broadcast_tag": "#мероприятие",
   "session_timeout": 600,
   "reconnect_delay": 5,
-  "log_level": "DEBUG"
+  "log_level": "INFO"
 }
